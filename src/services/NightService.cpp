@@ -1,4 +1,4 @@
-#include "core/NightService.h"
+#include "services/NightService.h"
 
 void NightService::setMode(Mode m) {
     _mode = m;

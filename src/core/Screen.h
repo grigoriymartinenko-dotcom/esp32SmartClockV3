@@ -1,22 +1,13 @@
 #pragma once
-#include <Arduino.h>
-#include <Adafruit_ST7735.h>
+#include "theme/Theme.h"
 
-/*
- * Базовый экран
- * ==============
- * Все экраны наследуются отсюда
- */
 class Screen {
 public:
     virtual ~Screen() = default;
+    virtual void begin() = 0;
+    virtual void update() = 0;
 
-    virtual void begin() {}
-    virtual void update() {}
-
-    // кнопки (пока заглушки)
-    virtual void onUp() {}
-    virtual void onDown() {}
-    virtual void onOk() {}
-    virtual void onBack() {}
+protected:
+    const Theme& theme;
+    explicit Screen(const Theme& t) : theme(t) {}
 };

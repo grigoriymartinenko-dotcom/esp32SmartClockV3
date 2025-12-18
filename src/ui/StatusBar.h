@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <Adafruit_ST7735.h>
-#include "ui/Theme.h"
+#include "theme/Theme.h"
 
 /*
  * StatusBar

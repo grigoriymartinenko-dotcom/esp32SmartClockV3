@@ -2,18 +2,18 @@
 #include "core/Screen.h"
 
 /*
- * ScreenManager v3
- * ================
- * Управляет активным экраном
+ * ScreenManager
+ * Управляет текущим экраном
  */
 class ScreenManager {
 public:
-    void set(Screen* screen);
-    Screen* active() const;
+    explicit ScreenManager(Screen& initial);
 
     void begin();
     void update();
 
+    void set(Screen& screen);
+
 private:
-    Screen* _active = nullptr;
+    Screen* _current = nullptr;
 };
