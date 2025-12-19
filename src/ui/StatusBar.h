@@ -1,42 +1,65 @@
 #pragma once
-
-#include <Arduino.h>
 #include <Adafruit_ST7735.h>
-#include "theme/Theme.h"
+
+#include "services/ThemeService.h"
+#include "services/TimeService.h"
 
 /*
- * StatusBar
- * =========
- * Верхняя строка статусов:
- *  WiFi | NTP | Night
+ * ============================================================
+ * StatusBar — верхняя строка состояния
  *
- * Получает состояния извне (через setXXX()),
- * не знает про сервисы, не мигает.
+ * Отображает:
+ *  - Wi-Fi (W)
+ *  - валидность времени / NTP (N)
+ *  - день недели + дату
+ *
+ * ПРАВИЛА:
+ *  - сам владеет своей зоной экрана
+ *  - НИКОГДА не затирает область ниже
+ *  - перерисовывается ТОЛЬКО при изменении состояния
+ * ============================================================
  */
+
+/* ---------- Геометрия статусбара (ЕДИНСТВЕННЫЙ ИСТОЧНИК) ---------- */
+static constexpr int STATUS_BAR_H = 24;
+
+static constexpr int ICON_Y = 16;
+static constexpr int WIFI_X = 6;
+static constexpr int NTP_X  = 22;
+static constexpr int DATE_X = 42;
+
 class StatusBar {
 public:
-    explicit StatusBar(Adafruit_ST7735& tft);
+    StatusBar(
+        Adafruit_ST7735& tft,
+        ThemeService& theme,
+        TimeService& time
+    );
 
     void setWiFi(bool connected);
-    void setNtp(bool synced);
-    void setNight(bool night); 
-
-    void draw(int x, int y, int w, int h, bool force = false);
+    void draw();
 
 private:
     Adafruit_ST7735& _tft;
+    ThemeService&    _theme;
+    TimeService&     _time;
 
-    bool _wifi  = false;
-    bool _ntp   = false;
-    bool _night = false;
+    // текущее состояние
+    bool _wifiOk = false;
 
-    bool _lw = false, _ln = false, _lni = false;
-    bool _first = true;
+    // предыдущее состояние (для dirty-check)
+    bool _lastWifiOk   = false;
+    bool _lastTimeOk   = false;
+    bool _lastIsNight  = false;
+    bool _wasTimeValid = false;
 
-    int _x{}, _y{}, _w{}, _h{};
+    int  _lastDay   = -1;
+    int  _lastMonth = -1;
+    int  _lastYear  = -1;
 
-    void drawBg();
-    void drawWiFi(int x, int y, bool ok);
-    void drawNtp(int x, int y, bool ok);
-    void drawNight(int x, int y, bool on);
+    bool isDirty() const;
+
+    void drawBackground();
+    void drawIcons();
+    void drawDate();
 };

@@ -1,45 +1,109 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <Adafruit_ST7735.h>
-
-#include "core/ScreenManager.h"
-#include "screens/ClockScreen.h"
-
-#include "services/TimeService.h"
-#include "services/NightService.h"
-#include "services/ThemeService.h"
 
 // ================= TFT =================
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h>
+
+// ================= CORE =================
+#include "core/ScreenManager.h"
+
+// ================= SERVICES =================
+#include "services/ThemeService.h"
+#include "services/TimeService.h"
+#include "services/NightService.h"
+#include "services/ForecastService.h"
+
+// ================= UI =================
+#include "ui/StatusBar.h"
+
+// ================= SCREENS =================
+#include "screens/ClockScreen.h"
+#include "screens/ForecastScreen.h"
+
+// =====================================================
+// TFT
+// =====================================================
 #define TFT_CS   5
 #define TFT_DC   2
 #define TFT_RST  4
 
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 
-// ================= SERVICES =================
+// =====================================================
+// Wi-Fi + OpenWeather
+// =====================================================
+static const char* WIFI_SSID = "grig";
+static const char* WIFI_PASS = "magnetic";
+
+static const char* OPENWEATHER_KEY = "07108cf067a5fdf5aa26dce75354400f";
+static const char* CITY  = "Kharkiv";
+static const char* UNITS = "metric";
+static const char* LANG  = "en";
+
+// =====================================================
+// SERVICES
+// =====================================================
+ThemeService themeService;
 TimeService  timeService;
 NightService nightService;
-ThemeService themeService;
 
-// ================= SCREEN =================
+ForecastService forecastService(
+    OPENWEATHER_KEY,
+    CITY,
+    UNITS,
+    LANG
+);
+
+// =====================================================
+// UI: STATUS BAR
+// =====================================================
+StatusBar statusBar(
+    tft,
+    themeService,
+    timeService
+);
+
+// =====================================================
+// SCREENS
+// =====================================================
 ClockScreen clockScreen(
     tft,
     timeService,
     nightService,
-    themeService.current()
+    themeService
 );
 
+ForecastScreen forecastScreen(
+    tft,
+    themeService,
+    forecastService
+);
+
+// =====================================================
+// SCREEN MANAGER
+// =====================================================
 ScreenManager screenManager(clockScreen);
 
-// ================= SETUP =================
+// =====================================================
+// SETUP
+// =====================================================
 void setup() {
     Serial.begin(115200);
 
+    // TFT
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
+    tft.fillScreen(ST7735_BLACK);
 
-    // ===== Wi-Fi =====
-    WiFi.begin("grig", "magnetic");
+    // Theme
+    themeService.begin();
+
+    // Time (NTP)
+    timeService.begin();
+
+    // Wi-Fi
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
     Serial.print("WiFi");
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
@@ -47,42 +111,28 @@ void setup() {
     }
     Serial.println(" OK");
 
-    // ===== NTP =====
-    configTime(
-        2 * 3600,   // GMT+2
-        0,
-        "pool.ntp.org",
-        "time.nist.gov",
-        "time.google.com"
-    );
+    // Forecast
+    forecastService.begin();
 
-    Serial.print("Waiting for NTP");
-    time_t now = 0;
-    int retries = 0;
-    while (now < 8 * 3600 * 2 && retries < 20) {
-        delay(500);
-        Serial.print(".");
-        time(&now);
-        retries++;
-    }
-    Serial.println();
-
-    if (now < 8 * 3600 * 2) {
-        Serial.println("❌ NTP FAILED");
-    } else {
-        Serial.println("✅ NTP OK");
-    }
-
-    timeService.begin();
-    themeService.begin();
-
+    // Screens
     screenManager.begin();
 }
 
-// ================= LOOP =================
+// =====================================================
+// LOOP
+// =====================================================
 void loop() {
+    // -------- services --------
     timeService.update();
-    nightService.update(timeService.hour());
+    forecastService.update();
 
+    // -------- screens --------
     screenManager.update();
+
+    // -------- status bar --------
+    // Рисуем ТОЛЬКО если экран его поддерживает
+    if (screenManager.currentHasStatusBar()) {
+        statusBar.setWiFi(WiFi.status() == WL_CONNECTED);
+        statusBar.draw();
+    }
 }

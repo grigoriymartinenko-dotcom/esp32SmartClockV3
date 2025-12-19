@@ -1,13 +1,40 @@
 #pragma once
-#include "theme/Theme.h"
+#include "services/ThemeService.h"
 
+/*
+ * Screen — базовый класс всех экранов.
+ *
+ * Экран:
+ *  - НЕ хранит Theme
+ *  - получает тему через ThemeService
+ *
+ * Жизненный цикл:
+ *  - begin()  — полный reset
+ *  - update() — регулярное обновление
+ *
+ * onThemeChanged():
+ *  - хук смены темы
+ *  - по умолчанию пустой
+ */
 class Screen {
 public:
     virtual ~Screen() = default;
+
     virtual void begin() = 0;
     virtual void update() = 0;
 
+    // 🔹 есть ли статусбар на этом экране
+    virtual bool hasStatusBar() const { return true; }
+
+    virtual void onThemeChanged() {}
+
 protected:
-    const Theme& theme;
-    explicit Screen(const Theme& t) : theme(t) {}
+    ThemeService& themeService;
+
+    explicit Screen(ThemeService& ts)
+        : themeService(ts) {}
+
+    const Theme& theme() const {
+        return themeService.current();
+    }
 };

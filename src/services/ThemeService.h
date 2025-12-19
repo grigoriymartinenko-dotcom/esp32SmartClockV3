@@ -1,13 +1,25 @@
 #pragma once
-#include "theme/Themes.h"
+#include "theme/Theme.h"
 
+/*
+ * ThemeService
+ * ------------
+ * Хранит текущее состояние темы (день / ночь)
+ * и отдаёт соответствующую структуру Theme.
+ */
 class ThemeService {
 public:
     void begin();
-    void update();
+
+    // true, если тема реально сменилась
+    bool setNight(bool night);
+
+    // текущая тема (цвета)
     const Theme& current() const;
-    void setNight(bool night);
+
+    // геттер состояния (нужен StatusBar)
+    bool isNight() const;
 
 private:
-    const Theme* _current = &THEME_DAY;
+    bool _isNight = false;
 };

@@ -1,15 +1,27 @@
 #include "services/ThemeService.h"
+#include "theme/Themes.h"
 
 void ThemeService::begin() {
-    _current = &THEME_DAY;
+    _isNight = false;
 }
 
-void ThemeService::update() {}
+bool ThemeService::setNight(bool night) {
+    if (_isNight == night)
+        return false;
+
+    _isNight = night;
+    return true;
+}
+
+bool ThemeService::isNight() const {
+    return _isNight;
+}
 
 const Theme& ThemeService::current() const {
-    return *_current;
-}
-
-void ThemeService::setNight(bool night) {
-    _current = night ? &THEME_NIGHT : &THEME_DAY;
+    // ------------------------------------------------------------
+    // ВАЖНО:
+    // Темы определены как constexpr (THEME_DAY / THEME_NIGHT),
+    // поэтому возвращаем ССЫЛКУ на них.
+    // ------------------------------------------------------------
+    return _isNight ? THEME_NIGHT : THEME_DAY;
 }
