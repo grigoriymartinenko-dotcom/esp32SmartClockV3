@@ -1,32 +1,37 @@
 #pragma once
-#include "core/Screen.h"
-#include "services/ForecastService.h"
 #include <Adafruit_ST7735.h>
 
+#include "core/Screen.h"
+#include "services/ForecastService.h"
+#include "layout/LayoutService.h"
+
+/*
+ * ForecastScreen
+ * --------------
+ * Экран прогноза погоды (FREE API).
+ * Показывает ТОЛЬКО сегодняшний день.
+ */
 class ForecastScreen : public Screen {
 public:
     ForecastScreen(
         Adafruit_ST7735& tft,
         ThemeService& theme,
-        ForecastService& forecast
+        ForecastService& forecast,
+        LayoutService& layout
     );
 
     void begin() override;
     void update() override;
-    void onThemeChanged() override;
 
-    bool hasStatusBar() const override { return true; }
+    bool hasStatusBar() const override;
+    bool hasBottomBar() const override;
 
 private:
+    void drawForecast();
+
     Adafruit_ST7735& _tft;
     ForecastService& _forecast;
+    LayoutService&   _layout;
 
-    bool _hasEverBeenReady = false;
-    bool _needsRedraw = true;
-
-    void clearContent();
-
-    void drawLoading();
-    void drawForecast();
-    void drawError();   // ⬅️ НОВОЕ
+    bool _dirty = true;
 };

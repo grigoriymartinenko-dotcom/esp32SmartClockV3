@@ -25,7 +25,9 @@ public:
 
     // 🔹 есть ли статусбар на этом экране
     virtual bool hasStatusBar() const { return true; }
-
+// 🔹 есть ли нижний бар на этом экране
+    virtual bool hasBottomBar() const { return true; }
+    // хук смены темы
     virtual void onThemeChanged() {}
 
 protected:

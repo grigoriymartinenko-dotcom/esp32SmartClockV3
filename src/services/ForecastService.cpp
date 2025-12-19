@@ -113,12 +113,20 @@ bool ForecastService::fetchForecast() {
         return false;
     }
 
-    DynamicJsonDocument doc(20000);
-    if (deserializeJson(doc, http.getStream())) {
-        setError("JSON error");
+    // =========================================================
+    // 🔥 ВАЖНО: FREE forecast = БОЛЬШОЙ JSON
+    // =========================================================
+    DynamicJsonDocument doc(45000);
+
+    DeserializationError err = deserializeJson(doc, http.getStream());
+    if (err) {
+        Serial.print("[Forecast] JSON error: ");
+        Serial.println(err.c_str());
+        setError(err.c_str());
         http.end();
         return false;
     }
+
     http.end();
 
     JsonArray list = doc["list"];
@@ -156,7 +164,6 @@ bool ForecastService::fetchForecast() {
 
 void ForecastService::setError(const char* msg) {
     // ❗ НЕ трогаем ready
-    // ready означает: "данные уже когда-то были"
     strncpy(_model.lastError, msg, sizeof(_model.lastError) - 1);
     _model.lastError[sizeof(_model.lastError) - 1] = '\0';
 }

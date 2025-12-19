@@ -1,24 +1,26 @@
 #pragma once
 #include "core/Screen.h"
+#include "ui/StatusBar.h"
+#include "ui/BottomBar.h"
 
-/*
- * ScreenManager
- * Управляет текущим экраном
- */
 class ScreenManager {
 public:
-    explicit ScreenManager(Screen& initial);
+    ScreenManager(
+        Screen& initial,
+        StatusBar& statusBar,
+        BottomBar& bottomBar
+    );
 
     void begin();
     void update();
+
     void set(Screen& screen);
 
-    // 🔔 уведомление экрана о смене темы
-    void notifyThemeChanged();
-
-    // 🟦 НУЖЕН ЛИ STATUSBAR
     bool currentHasStatusBar() const;
+    bool currentHasBottomBar() const;
 
 private:
-    Screen* _current = nullptr;
+    Screen*    _current = nullptr;
+    StatusBar* _statusBar;
+    BottomBar* _bottomBar;
 };

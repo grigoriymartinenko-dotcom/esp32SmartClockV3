@@ -4,36 +4,35 @@
 #include "core/Screen.h"
 #include "services/TimeService.h"
 #include "services/NightService.h"
-#include "services/DhtService.h"
+#include "services/ThemeService.h"
+#include "layout/LayoutService.h"
 
 class ClockScreen : public Screen {
 public:
     ClockScreen(
         Adafruit_ST7735& tft,
-        TimeService& time,
-        NightService& night,
-        ThemeService& themeService
+        TimeService& timeService,
+        NightService& nightService,
+        ThemeService& themeService,
+        LayoutService& layoutService
     );
 
     void begin() override;
     void update() override;
-int lastSecShown = -1;
-// последние отрисованные значения нижней панели
-int lastTempShown = -10000;  // *10 (22.3 → 223)
-int lastHumShown  = -1;
+
+    bool hasStatusBar() const override { return true; }
+    bool hasBottomBar() const override { return true; }
+
 private:
-
-DhtService dht;
-
-uint32_t lastDhtUpdateMs = 0;
+    void drawTime(bool force);
 
     Adafruit_ST7735& tft;
     TimeService&     time;
     NightService&    night;
+    LayoutService&   layout;
 
-    int lastH = -1;
-    int lastM = -1;
-    int lastS = -1;
-void drawDht();   // отдельная отрисовка
-    void drawTime();
+    int  lastH = -1;
+    int  lastM = -1;
+    int  lastS = -1;
+    bool lastNight = false;
 };

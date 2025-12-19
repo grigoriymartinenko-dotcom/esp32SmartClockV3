@@ -13,9 +13,15 @@
 #include "services/TimeService.h"
 #include "services/NightService.h"
 #include "services/ForecastService.h"
+#include "services/DhtService.h"
+
+// ================= LAYOUT =================
+#include "layout/LayoutService.h"
 
 // ================= UI =================
 #include "ui/StatusBar.h"
+#include "ui/BottomBar.h"
+#include "ui/UiSeparator.h"
 
 // ================= SCREENS =================
 #include "screens/ClockScreen.h"
@@ -29,6 +35,25 @@
 #define TFT_RST  4
 
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
+
+// =====================================================
+// DHT
+// =====================================================
+#define DHT_PIN  25
+#define DHT_TYPE DHT11
+DhtService dht(DHT_PIN, DHT_TYPE);
+
+// =====================================================
+// BUTTONS
+// =====================================================
+#define BTN_FORECAST 22
+#define BTN_CLOCK    21
+
+bool lastForecastBtn = HIGH;
+bool lastClockBtn    = HIGH;
+
+uint32_t lastBtnMs = 0;
+const uint32_t BTN_DEBOUNCE_MS = 200;
 
 // =====================================================
 // Wi-Fi + OpenWeather
@@ -56,13 +81,31 @@ ForecastService forecastService(
 );
 
 // =====================================================
-// UI: STATUS BAR
+// LAYOUT
+// =====================================================
+LayoutService layout(tft);
+
+// =====================================================
+// UI BARS
 // =====================================================
 StatusBar statusBar(
     tft,
     themeService,
     timeService
 );
+
+BottomBar bottomBar(
+    tft,
+    themeService,
+    layout,
+    dht
+);
+
+// =====================================================
+// SEPARATORS
+// =====================================================
+UiSeparator sepStatus(tft, themeService, 0);
+UiSeparator sepBottom(tft, themeService, 0);
 
 // =====================================================
 // SCREENS
@@ -71,19 +114,25 @@ ClockScreen clockScreen(
     tft,
     timeService,
     nightService,
-    themeService
+    themeService,
+    layout
 );
 
 ForecastScreen forecastScreen(
     tft,
     themeService,
-    forecastService
+    forecastService,
+    layout
 );
 
 // =====================================================
 // SCREEN MANAGER
 // =====================================================
-ScreenManager screenManager(clockScreen);
+ScreenManager screenManager(
+    clockScreen,
+    statusBar,
+    bottomBar
+);
 
 // =====================================================
 // SETUP
@@ -91,30 +140,48 @@ ScreenManager screenManager(clockScreen);
 void setup() {
     Serial.begin(115200);
 
-    // TFT
+    // ---------- TFT ----------
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
-    tft.fillScreen(ST7735_BLACK);
+    tft.fillScreen(0x0000);
 
-    // Theme
+    // ---------- Buttons ----------
+    pinMode(BTN_FORECAST, INPUT_PULLUP);
+    pinMode(BTN_CLOCK,    INPUT_PULLUP);
+
+    // ---------- Theme ----------
     themeService.begin();
 
-    // Time (NTP)
+    // ---------- Time ----------
+    timeService.setTimezone(2 * 3600, 3600); // Украина
     timeService.begin();
 
-    // Wi-Fi
+    // ---------- Layout ----------
+    layout.begin();
+
+    // ---------- DHT ----------
+    dht.begin();
+
+    sepStatus.setY(layout.sepStatusY());
+    sepBottom.setY(layout.sepBottomY());
+
+    // ---------- Wi-Fi ----------
+    Serial.println("[WiFi] Connecting...");
+    statusBar.setWiFiStatus(StatusBar::CONNECTING);
+
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.print("WiFi");
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
-    Serial.println(" OK");
+    Serial.println("\n[WiFi] Connected");
 
-    // Forecast
+    statusBar.setWiFiStatus(StatusBar::ONLINE);
+
+    // ---------- Forecast ----------
     forecastService.begin();
 
-    // Screens
+    // ---------- Screens ----------
     screenManager.begin();
 }
 
@@ -122,17 +189,72 @@ void setup() {
 // LOOP
 // =====================================================
 void loop() {
-    // -------- services --------
+
+    // ---------- Services ----------
     timeService.update();
     forecastService.update();
+    dht.update();
 
-    // -------- screens --------
+    // ---------- NTP → StatusBar ----------
+    static TimeService::SyncState lastNtpState = TimeService::NOT_STARTED;
+    auto st = timeService.syncState();
+
+    if (st != lastNtpState) {
+        if (st == TimeService::SYNCED) {
+            statusBar.setNtpStatus(StatusBar::ONLINE);
+        } else if (st == TimeService::SYNCING) {
+            statusBar.setNtpStatus(StatusBar::CONNECTING);
+        } else {
+            statusBar.setNtpStatus(StatusBar::OFFLINE);
+        }
+        lastNtpState = st;
+    }
+if (timeService.syncState() == TimeService::ERROR) {
+    statusBar.setNtpStatus(StatusBar::ERROR);
+}
+    // ---------- BottomBar refresh ----------
+    static uint32_t lastUiMs = 0;
+    if (millis() - lastUiMs > 3000) {
+        lastUiMs = millis();
+        bottomBar.markDirty();
+    }
+
+    // ---------- Buttons ----------
+    bool forecastBtn = digitalRead(BTN_FORECAST);
+    bool clockBtn    = digitalRead(BTN_CLOCK);
+    uint32_t nowMs = millis();
+
+    if (lastForecastBtn == HIGH && forecastBtn == LOW) {
+        if (nowMs - lastBtnMs > BTN_DEBOUNCE_MS) {
+            screenManager.set(forecastScreen);
+            sepStatus.markDirty();
+            sepBottom.markDirty();
+            lastBtnMs = nowMs;
+        }
+    }
+
+    if (lastClockBtn == HIGH && clockBtn == LOW) {
+        if (nowMs - lastBtnMs > BTN_DEBOUNCE_MS) {
+            screenManager.set(clockScreen);
+            sepStatus.markDirty();
+            sepBottom.markDirty();
+            lastBtnMs = nowMs;
+        }
+    }
+
+    lastForecastBtn = forecastBtn;
+    lastClockBtn    = clockBtn;
+
+    // ---------- Draw order ----------
     screenManager.update();
 
-    // -------- status bar --------
-    // Рисуем ТОЛЬКО если экран его поддерживает
     if (screenManager.currentHasStatusBar()) {
-        statusBar.setWiFi(WiFi.status() == WL_CONNECTED);
         statusBar.draw();
     }
+    if (screenManager.currentHasBottomBar()) {
+        bottomBar.draw();
+    }
+
+    sepStatus.draw();
+    sepBottom.draw();
 }

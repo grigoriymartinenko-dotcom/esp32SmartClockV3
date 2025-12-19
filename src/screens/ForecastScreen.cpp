@@ -1,122 +1,94 @@
 #include "screens/ForecastScreen.h"
-#include <Fonts/FreeSans9pt7b.h>
-#include "ForecastScreen.h"
+#include <math.h>
 
 /*
- * ============================================================
  * ForecastScreen
- *
- * ВАЖНО:
- * - Экран НЕ чистит статусбар
- * - Работает ТОЛЬКО ниже STATUS_BAR_H
- * ============================================================
+ * --------------
+ * Использует данные ForecastService (today only).
+ * Рисует ТОЛЬКО safe-область между разделителями.
  */
-
-static constexpr int STATUS_BAR_H = 24;
 
 ForecastScreen::ForecastScreen(
     Adafruit_ST7735& tft,
     ThemeService& theme,
-    ForecastService& forecast
+    ForecastService& forecast,
+    LayoutService& layout
 )
 : Screen(theme)
 , _tft(tft)
 , _forecast(forecast)
+, _layout(layout)
 {}
 
 void ForecastScreen::begin() {
-    _hasEverBeenReady = false;
-    _needsRedraw = true;
+    _dirty = true;
+    drawForecast();
 }
 
 void ForecastScreen::update() {
-    bool ready = _forecast.isReady();
-
-    // --------------------------------------------------------
-    // Пока прогноз НИ РАЗУ не был получен
-    // --------------------------------------------------------
-    if (!_hasEverBeenReady) {
-        if (!ready) {
-            if (_needsRedraw) {
-                drawLoading();
-                _needsRedraw = false;
-            }
-            return;
-        }
-
-        // первый успешный прогноз
-        _hasEverBeenReady = true;
-        _needsRedraw = true;
-    }
-
-    // --------------------------------------------------------
-    // Прогноз уже был — рисуем его
-    // --------------------------------------------------------
-    if (_needsRedraw) {
+    if (_dirty) {
         drawForecast();
-        _needsRedraw = false;
     }
-}
-
-void ForecastScreen::onThemeChanged() {
-    _needsRedraw = true;
-}
-
-/*
- * ------------------------------------------------------------
- * ОЧИСТКА ТОЛЬКО ОБЛАСТИ ЭКРАНА
- * НИЖЕ СТАТУСБАРА
- * ------------------------------------------------------------
- */
-void ForecastScreen::clearContent() {
-    _tft.fillRect(
-        0,
-        STATUS_BAR_H,
-        _tft.width(),
-        _tft.height() - STATUS_BAR_H,
-        theme().bg
-    );
-}
-
-void ForecastScreen::drawLoading() {
-    clearContent();
-
-    _tft.setFont(&FreeSans9pt7b);
-    _tft.setTextColor(theme().primary, theme().bg);
-    _tft.setCursor(20, STATUS_BAR_H + 40);
-    _tft.print("Loading...");
-
-    drawError();
 }
 
 void ForecastScreen::drawForecast() {
-    clearContent();
+    _dirty = false;
 
-    _tft.setFont(&FreeSans9pt7b);
-    _tft.setTextColor(theme().primary, theme().bg);
+    const Theme& th = theme();
 
-    const ForecastDay* d = _forecast.today();
-    if (!d) {
-        drawError();
+    // ---------- SAFE AREA ----------
+    const int y = _layout.clockY();
+    const int h = _layout.clockH();
+
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
+
+    // очистка области
+    _tft.fillRect(0, y, _tft.width(), h, th.bg);
+
+    // ---------- НЕТ ДАННЫХ ----------
+    if (!_forecast.isReady()) {
+        _tft.setTextColor(th.muted, th.bg);
+        _tft.setCursor(20, y + h / 2);
+        _tft.print("No forecast data");
         return;
     }
 
-    _tft.setCursor(10, STATUS_BAR_H + 30);
-    _tft.printf("Day: %.1f C", d->tempDay);
+    const ForecastDay* d = _forecast.today();
+    if (!d) return;
 
-    _tft.setCursor(10, STATUS_BAR_H + 50);
-    _tft.printf("Night: %.1f C", d->tempNight);
+    int cy = y + 20;
 
-    _tft.setCursor(10, STATUS_BAR_H + 70);
-    _tft.printf("Humidity: %d%%", d->humidity);
+    // ---------- TITLE ----------
+    _tft.setTextColor(th.textSecondary, th.bg);
+    _tft.setCursor((_tft.width() - 36) / 2, cy);
+    _tft.print("TODAY");
+
+    cy += 20;
+
+    // ---------- DAY TEMP ----------
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.setCursor(20, cy);
+    _tft.printf("Day:   %dC", (int)round(d->tempDay));
+
+    cy += 18;
+
+    // ---------- NIGHT TEMP ----------
+    _tft.setCursor(20, cy);
+    _tft.printf("Night: %dC", (int)round(d->tempNight));
+
+    cy += 18;
+
+    // ---------- HUMIDITY ----------
+    _tft.setTextColor(th.muted, th.bg);
+    _tft.setCursor(20, cy);
+    _tft.printf("Hum:   %d%%", d->humidity);
 }
 
-void ForecastScreen::drawError() {
-    const char* err = _forecast.lastError();
-    if (!err || err[0] == '\0')
-        return;
+bool ForecastScreen::hasStatusBar() const {
+    return true;
+}
 
-    _tft.setTextColor(theme().secondary, theme().bg);
-    _tft.setCursor(10, STATUS_BAR_H + 100);
-    _tft.print(err);
+bool ForecastScreen::hasBottomBar() const {
+    return false;
 }
