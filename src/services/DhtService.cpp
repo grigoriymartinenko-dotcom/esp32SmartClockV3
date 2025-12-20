@@ -1,4 +1,5 @@
 #include "services/DhtService.h"
+#include <math.h>
 
 DhtService::DhtService(uint8_t pin, uint8_t type)
 : _dht(pin, type)
@@ -21,8 +22,22 @@ void DhtService::update() {
     if (isnan(h) || isnan(t))
         return;
 
-    _hum  = h;
-    _temp = t;
+    bool changed = false;
+
+    // сравниваем с предыдущими значениями
+    if (isnan(_temp) || fabs(_temp - t) >= 0.1f) {
+        _temp = t;
+        changed = true;
+    }
+
+    if (isnan(_hum) || fabs(_hum - h) >= 0.5f) {
+        _hum = h;
+        changed = true;
+    }
+
+    if (changed) {
+        _version.bump();
+    }
 }
 
 bool DhtService::isValid() const {
@@ -35,4 +50,8 @@ float DhtService::temperature() const {
 
 float DhtService::humidity() const {
     return _hum;
+}
+
+const ServiceVersion& DhtService::version() const {
+    return _version;
 }

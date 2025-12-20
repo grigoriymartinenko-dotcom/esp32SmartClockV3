@@ -6,6 +6,7 @@
 #include "services/NightService.h"
 #include "services/ThemeService.h"
 #include "services/LayoutService.h"
+#include "services/UiVersionService.h"
 
 class ClockScreen : public Screen {
 public:
@@ -14,7 +15,8 @@ public:
         TimeService& timeService,
         NightService& nightService,
         ThemeService& themeService,
-        LayoutService& layoutService
+        LayoutService& layoutService,
+        UiVersionService& uiVersion
     );
 
     void begin() override;
@@ -30,7 +32,8 @@ private:
     TimeService&     time;
     NightService&    night;
     LayoutService&   layout;
+    UiVersionService& uiVersion;
 
-    bool lastNight = false;
-    uint32_t lastTimeVersion = 0;
+    uint32_t lastTimeV  = 0;
+    uint32_t lastThemeV = 0;
 };

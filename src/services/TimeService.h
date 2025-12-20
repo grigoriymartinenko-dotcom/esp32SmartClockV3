@@ -1,23 +1,19 @@
 #pragma once
-
-#include <Arduino.h>
 #include <time.h>
-#include "core/ServiceVersion.h"
+#include <stdint.h>
+
+#include "services/UiVersionService.h"
 
 /*
- * ============================================================
  * TimeService
- *
- * Управляет системным временем ESP32 (NTP).
- * ЯВЛЯЕТСЯ ИСТОЧНИКОМ СОБЫТИЙ ДЛЯ UI (через versioning)
- * ============================================================
+ * -----------
+ * Источник времени + NTP
+ * v3.2: версии
+ * v3.1: старый API сохранён
  */
+
 class TimeService {
 public:
-    enum Weekday {
-        SUN = 0, MON, TUE, WED, THU, FRI, SAT
-    };
-
     enum SyncState {
         NOT_STARTED,
         SYNCING,
@@ -25,49 +21,39 @@ public:
         ERROR
     };
 
-    TimeService();
+    explicit TimeService(UiVersionService& uiVersion);
 
-    void setTimezone(int utcOffset, int dst);
     void begin();
     void update();
 
-    // ===== VERSION =====
-    const ServiceVersion& version() const;
-
-    // ===== SYNC STATUS =====
-    SyncState syncState() const;
-    bool isValid() const;
+    void setTimezone(long gmtOffsetSec, int daylightOffsetSec);
 
     // ===== TIME =====
     int hour()   const;
     int minute() const;
     int second() const;
 
-    // ===== DATE =====
-    int day()    const;
-    int month()  const;
-    int year()   const;
-    Weekday weekday() const;
+    // ===== DATE (для StatusBar) =====
+    bool isValid() const;
+
+    int day()   const;
+    int month() const;
+    int year()  const;
+
+    SyncState syncState() const;
 
 private:
-    void applyTimezone();
+    void updateTime();
+    void syncNtp();
 
-    tm _tm {};
-    tm _prevTm {};
+private:
+    UiVersionService& _uiVersion;
 
-    bool _valid = false;
-    bool _wasValid = false;
-
-    unsigned long _lastUpdateMs = 0;
-    static constexpr unsigned long UPDATE_INTERVAL = 1000;
-
-    // timezone
-    int _utcOffset = 0;
-    int _dstOffset = 0;
-
-    // sync state
+    tm _timeinfo{};
     SyncState _syncState = NOT_STARTED;
 
-    // 🔥 VERSION
-    ServiceVersion _version;
+    int _lastMinute = -1;
+
+    long _gmtOffsetSec = 0;
+    int  _daylightOffsetSec = 0;
 };

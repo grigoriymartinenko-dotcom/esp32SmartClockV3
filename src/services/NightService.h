@@ -1,25 +1,28 @@
 #pragma once
-#include <Arduino.h>
+#include <stdint.h>
+
+#include "services/UiVersionService.h"
+#include "services/TimeService.h"
 
 /*
  * NightService
- * ============
- * DAY / NIGHT / AUTO
+ * ------------
+ * Определяет ночь / день.
+ * Логическое событие → THEME version
  */
+
 class NightService {
 public:
-    enum class Mode : uint8_t {
-        DAY,
-        NIGHT,
-        AUTO
-    };
+    // 🔹 НОВОЕ (v3.2)
+    explicit NightService(UiVersionService& uiVersion);
 
-    void setMode(Mode m);
-    void update(uint8_t hour);
+    void begin();
+    void update(const TimeService& time);
 
     bool isNight() const;
 
 private:
-    Mode _mode = Mode::AUTO;
-    bool _night = false;
+    UiVersionService& _uiVersion;
+
+    bool _isNight = false;
 };

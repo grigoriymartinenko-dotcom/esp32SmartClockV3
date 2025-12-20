@@ -9,6 +9,7 @@
 #include "core/ScreenManager.h"
 
 // ================= SERVICES =================
+#include "services/UiVersionService.h"
 #include "services/ThemeService.h"
 #include "services/TimeService.h"
 #include "services/NightService.h"
@@ -26,6 +27,7 @@
 // ================= SCREENS =================
 #include "screens/ClockScreen.h"
 #include "screens/ForecastScreen.h"
+#include "screens/SettingsScreen.h"
 
 // =====================================================
 // TFT
@@ -44,15 +46,47 @@ Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 DhtService dht(DHT_PIN, DHT_TYPE);
 
 // =====================================================
-// BUTTONS
+// BUTTONS (4 hardware buttons)
 // =====================================================
-#define BTN_FORECAST 22
-#define BTN_CLOCK    21
+// FIXED ранее: BTN1=GPIO17, BTN2=GPIO16, BTN3=GPIO22, BTN4=GPIO21
+#define BTN_LEFT   17
+#define BTN_RIGHT  16
+#define BTN_OK     22
+#define BTN_BACK   21
 
-bool lastForecastBtn = HIGH;
-bool lastClockBtn    = HIGH;
-uint32_t lastBtnMs = 0;
-const uint32_t BTN_DEBOUNCE_MS = 200;
+static const uint32_t BTN_DEBOUNCE_MS = 200;
+
+struct DebouncedButton {
+    uint8_t pin = 0;
+    bool last = HIGH;
+    uint32_t lastMs = 0;
+
+    void begin(uint8_t p) {
+        pin = p;
+        pinMode(pin, INPUT_PULLUP);
+        last = digitalRead(pin);
+        lastMs = 0;
+    }
+
+    // true = "нажатие" (фронт HIGH->LOW) с debounce
+    bool pressed(uint32_t nowMs) {
+        bool v = digitalRead(pin);
+
+        bool trig = false;
+        if (last == HIGH && v == LOW && (nowMs - lastMs) > BTN_DEBOUNCE_MS) {
+            trig = true;
+            lastMs = nowMs;
+        }
+
+        last = v;
+        return trig;
+    }
+};
+
+DebouncedButton btnLeft;
+DebouncedButton btnRight;
+DebouncedButton btnOk;
+DebouncedButton btnBack;
 
 // =====================================================
 // Wi-Fi / Weather
@@ -66,11 +100,16 @@ static const char* UNITS = "metric";
 static const char* LANG  = "en";
 
 // =====================================================
+// UI VERSION (v3.2)
+// =====================================================
+UiVersionService uiVersion;
+
+// =====================================================
 // SERVICES
 // =====================================================
-ThemeService themeService;
-TimeService  timeService;
-NightService nightService;
+ThemeService themeService(uiVersion);
+TimeService  timeService(uiVersion);
+NightService nightService(uiVersion);
 
 ForecastService forecastService(
     OPENWEATHER_KEY,
@@ -87,7 +126,11 @@ LayoutService layout(tft);
 // =====================================================
 // UI
 // =====================================================
-StatusBar statusBar(tft, themeService, timeService);
+StatusBar statusBar(
+    tft,
+    themeService,
+    timeService
+);
 
 BottomBar bottomBar(
     tft,
@@ -110,7 +153,8 @@ ClockScreen clockScreen(
     timeService,
     nightService,
     themeService,
-    layout
+    layout,
+    uiVersion
 );
 
 ForecastScreen forecastScreen(
@@ -120,10 +164,17 @@ ForecastScreen forecastScreen(
     layout
 );
 
+SettingsScreen settingsScreen(
+    tft,
+    themeService,
+    layout
+);
+
 // =====================================================
 // SCREEN MANAGER
 // =====================================================
 ScreenManager screenManager(
+    tft,
     clockScreen,
     statusBar,
     bottomBar,
@@ -133,10 +184,40 @@ ScreenManager screenManager(
 );
 
 // =====================================================
+// ACTIVE SCREEN (local state for routing buttons)
+// =====================================================
+enum class ActiveScreen : uint8_t {
+    CLOCK = 0,
+    FORECAST,
+    SETTINGS
+};
+
+static ActiveScreen active = ActiveScreen::CLOCK;
+
+static void goClock() {
+    screenManager.set(clockScreen);
+    active = ActiveScreen::CLOCK;
+}
+
+static void goForecast() {
+    screenManager.set(forecastScreen);
+    active = ActiveScreen::FORECAST;
+}
+
+static void goSettings() {
+    settingsScreen.clearExitRequest();
+    screenManager.set(settingsScreen);
+    active = ActiveScreen::SETTINGS;
+}
+
+// =====================================================
 // SETUP
 // =====================================================
 void setup() {
     Serial.begin(115200);
+
+    // ---------- UI Versions ----------
+    uiVersion.begin();
 
     // ---------- TFT ----------
     tft.initR(INITR_BLACKTAB);
@@ -144,8 +225,10 @@ void setup() {
     tft.fillScreen(0x0000);
 
     // ---------- Buttons ----------
-    pinMode(BTN_FORECAST, INPUT_PULLUP);
-    pinMode(BTN_CLOCK,    INPUT_PULLUP);
+    btnLeft.begin(BTN_LEFT);
+    btnRight.begin(BTN_RIGHT);
+    btnOk.begin(BTN_OK);
+    btnBack.begin(BTN_BACK);
 
     // ---------- Theme ----------
     themeService.begin();
@@ -173,6 +256,7 @@ void setup() {
 
     // ---------- Screens ----------
     screenManager.begin();
+    active = ActiveScreen::CLOCK;
 }
 
 // =====================================================
@@ -182,6 +266,7 @@ void loop() {
 
     // ---------- Services ----------
     timeService.update();
+    nightService.update(timeService);
     forecastService.update();
     dht.update();
 
@@ -206,7 +291,6 @@ void loop() {
             statusBar.setNtpStatus(StatusBar::ERROR);
         }
         else {
-            // NOT_STARTED / IDLE
             statusBar.setNtpStatus(
                 ntpEverSynced ? StatusBar::ONLINE
                               : StatusBar::OFFLINE
@@ -217,24 +301,53 @@ void loop() {
     }
 
     // ==================================================
-    // Buttons
+    // Buttons routing
     // ==================================================
-    bool f = digitalRead(BTN_FORECAST);
-    bool c = digitalRead(BTN_CLOCK);
     uint32_t now = millis();
+// ===== DEBUG BUTTONS (TEMP) =====
+static uint32_t lastPrint = 0;
+if (now - lastPrint > 300) {
+    lastPrint = now;
 
-    if (lastForecastBtn == HIGH && f == LOW && now - lastBtnMs > BTN_DEBOUNCE_MS) {
-        screenManager.set(forecastScreen);
-        lastBtnMs = now;
+    Serial.printf(
+        "[BTN raw] L=%d R=%d OK=%d BACK=%d\n",
+        digitalRead(BTN_LEFT),
+        digitalRead(BTN_RIGHT),
+        digitalRead(BTN_OK),
+        digitalRead(BTN_BACK)
+    );
+}
+    const bool pLeft  = btnLeft.pressed(now);
+    const bool pRight = btnRight.pressed(now);
+    const bool pOk    = btnOk.pressed(now);
+    const bool pBack  = btnBack.pressed(now);
+if (pLeft)  Serial.println("[BTN] LEFT pressed");
+if (pRight) Serial.println("[BTN] RIGHT pressed");
+if (pOk)    Serial.println("[BTN] OK pressed");
+if (pBack)  Serial.println("[BTN] BACK pressed");
+    if (active == ActiveScreen::SETTINGS) {
+        // SETTINGS: навигация внутри экрана
+        if (pLeft)  settingsScreen.onLeft();
+        if (pRight) settingsScreen.onRight();
+        if (pOk)    settingsScreen.onOk();
+        if (pBack)  settingsScreen.onBack();
+
+        // выход по флагу (BACK)
+        if (settingsScreen.exitRequested()) {
+            settingsScreen.clearExitRequest();
+            goClock();
+        }
+    } else {
+        // НЕ settings: быстрые действия
+        // LEFT  -> Forecast
+        // RIGHT -> Clock
+        // OK    -> Settings
+        // BACK  -> Clock (на всякий)
+        if (pLeft)  goForecast();
+        if (pRight) goClock();
+        if (pOk)    goSettings();
+        if (pBack)  goClock();
     }
-
-    if (lastClockBtn == HIGH && c == LOW && now - lastBtnMs > BTN_DEBOUNCE_MS) {
-        screenManager.set(clockScreen);
-        lastBtnMs = now;
-    }
-
-    lastForecastBtn = f;
-    lastClockBtn    = c;
 
     // ==================================================
     // Draw order
@@ -249,6 +362,6 @@ void loop() {
         bottomBar.update();
     }
 
-sepStatus.update();
-sepBottom.update();
+    sepStatus.update();
+    sepBottom.update();
 }

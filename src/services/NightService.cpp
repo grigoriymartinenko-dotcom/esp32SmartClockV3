@@ -1,25 +1,27 @@
 #include "services/NightService.h"
 
-void NightService::setMode(Mode m) {
-    _mode = m;
+NightService::NightService(UiVersionService& uiVersion)
+    : _uiVersion(uiVersion)
+{
 }
 
-void NightService::update(uint8_t hour) {
-    switch (_mode) {
-        case Mode::DAY:
-            _night = false;
-            break;
+void NightService::begin() {
+    _isNight = false;
+}
 
-        case Mode::NIGHT:
-            _night = true;
-            break;
+void NightService::update(const TimeService& time) {
+    bool night =
+        (time.hour() >= 22) ||
+        (time.hour() < 6);
 
-        case Mode::AUTO:
-            _night = (hour >= 22 || hour < 7);
-            break;
+    if (night != _isNight) {
+        _isNight = night;
+
+        // 🔹 логическое событие: сменилась ночь/день
+        _uiVersion.bump(UiChannel::THEME);
     }
 }
 
 bool NightService::isNight() const {
-    return _night;
+    return _isNight;
 }

@@ -1,32 +1,25 @@
 #include "screens/ClockScreen.h"
 
-/*
- * ClockScreen
- * -----------
- * РЕАКТИВНЫЙ экран часов.
- * Реакция ТОЛЬКО на изменение версии TimeService.
- */
-
 ClockScreen::ClockScreen(
     Adafruit_ST7735& t,
     TimeService& timeService,
     NightService& nightService,
     ThemeService& themeService,
-    LayoutService& layoutService
+    LayoutService& layoutService,
+    UiVersionService& uiVer
 )
     : Screen(themeService)
     , tft(t)
     , time(timeService)
     , night(nightService)
     , layout(layoutService)
+    , uiVersion(uiVer)
 {
 }
 
 void ClockScreen::begin() {
-    lastNight = night.isNight();
-    themeService.setNight(lastNight);
 
-    // очистка зоны часов
+    // фон
     tft.fillRect(
         0,
         layout.clockSafeY(),
@@ -35,37 +28,33 @@ void ClockScreen::begin() {
         theme().bg
     );
 
-    // очистка зоны BottomBar
-    if (hasBottomBar()) {
-        tft.fillRect(
-            0,
-            layout.bottomY(),
-            tft.width(),
-            layout.bottomH(),
-            theme().bg
-        );
-    }
+// ===== FULL CLEAR CLOCK AREA =====
+// Очищаем ВСЮ область от низа StatusBar до низа экрана
+// чтобы не осталось хвостов после SettingsScreen
+const int y0 = layout.statusY() + layout.statusH();
+const int h0 = tft.height() - y0;
 
-    // ST7735 HARD FIX (низ)
-    tft.fillRect(
-        0,
-        tft.height() - 2,
-        tft.width(),
-        2,
-        theme().bg
-    );
+tft.fillRect(
+    0,
+    y0,
+    tft.width(),
+    h0,
+    theme().bg
+);
 
-    lastTimeVersion = time.version().value;
+    lastTimeV  = uiVersion.version(UiChannel::TIME);
+    lastThemeV = uiVersion.version(UiChannel::THEME);
+
     drawTime(true);
 }
 
 void ClockScreen::update() {
 
-    // смена день / ночь
-    bool isNightNow = night.isNight();
-    if (isNightNow != lastNight) {
-        lastNight = isNightNow;
-        themeService.setNight(isNightNow);
+    // 🔥 Theme / Night changed
+    uint32_t themeV = uiVersion.version(UiChannel::THEME);
+    if (themeV != lastThemeV) {
+        lastThemeV = themeV;
+        themeService.setNight(night.isNight());
         drawTime(true);
         return;
     }
@@ -73,9 +62,10 @@ void ClockScreen::update() {
     if (!time.isValid())
         return;
 
-    // 🔥 РЕАКТИВНОСТЬ ПО VERSION
-    if (lastTimeVersion != time.version().value) {
-        lastTimeVersion = time.version().value;
+    // 🔥 Time changed
+    uint32_t timeV = uiVersion.version(UiChannel::TIME);
+    if (timeV != lastTimeV) {
+        lastTimeV = timeV;
         drawTime(false);
     }
 }
@@ -108,7 +98,6 @@ void ClockScreen::drawTime(bool force) {
     const int SEC_X = X + TIME_W + SEC_GAP;
     const int SEC_Y = Y + 6;
 
-    // HH:MM
     if (force) {
         tft.fillRect(X, Y, TIME_W, TIME_H, theme().bg);
     }
@@ -116,9 +105,20 @@ void ClockScreen::drawTime(bool force) {
     tft.setTextSize(3);
     tft.setTextColor(theme().textPrimary, theme().bg);
     tft.setCursor(X, Y);
-    tft.printf("%02d:%02d", h, m);
+    //tft.printf("%02d:%02d", h, m);
+const bool colonVisible =
+    (uiVersion.version(UiChannel::TIME) % 2) == 0;
 
-    // секунды
+tft.setTextSize(3);
+tft.setTextColor(theme().textPrimary, theme().bg);
+tft.setCursor(X, Y);
+
+if (colonVisible) {
+    tft.printf("%02d:%02d", h, m);
+} else {
+    tft.printf("%02d %02d", h, m);
+}
+
     if (showSeconds) {
         tft.fillRect(SEC_X, SEC_Y, 24, 12, theme().bg);
         tft.setTextSize(1);

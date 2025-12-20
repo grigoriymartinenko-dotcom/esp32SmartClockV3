@@ -1,6 +1,7 @@
 #include "core/ScreenManager.h"
 
 ScreenManager::ScreenManager(
+    Adafruit_ST7735& tft,
     Screen& initial,
     StatusBar& statusBar,
     BottomBar& bottomBar,
@@ -8,7 +9,8 @@ ScreenManager::ScreenManager(
     UiSeparator& sepStatus,
     UiSeparator& sepBottom
 )
-: _current(&initial)
+: _tft(&tft)
+, _current(&initial)
 , _statusBar(&statusBar)
 , _bottomBar(&bottomBar)
 , _layout(&layout)
@@ -16,24 +18,15 @@ ScreenManager::ScreenManager(
 , _sepBottom(&sepBottom)
 {}
 
-/*
- * applyLayout()
- * -------------
- * ЕДИНСТВЕННОЕ место, где:
- *  - решается, есть ли нижняя линия
- *  - задаются координаты линий
- */
 void ScreenManager::applyLayout() {
 
-    // -------- верхняя линия (ВСЕГДА) --------
     _sepStatus->setY(_layout->sepStatusY());
     _sepStatus->markDirty();
 
-    // -------- нижняя линия --------
     if (_current && _current->hasBottomBar()) {
         _sepBottom->setY(_layout->sepBottomY());
     } else {
-        _sepBottom->setY(-1);   // ❗ сигнал "НЕ РИСОВАТЬ"
+        _sepBottom->setY(-1);
     }
     _sepBottom->markDirty();
 }
@@ -41,16 +34,11 @@ void ScreenManager::applyLayout() {
 void ScreenManager::begin() {
     if (!_current) return;
 
-    // 1. layout знает режим
     _layout->setHasBottomBar(_current->hasBottomBar());
-
-    // 2. линии
     applyLayout();
 
-    // 3. экран
     _current->begin();
 
-    // 4. UI бары
     _statusBar->markDirty();
     _bottomBar->setVisible(_current->hasBottomBar());
     _bottomBar->markDirty();
@@ -59,16 +47,11 @@ void ScreenManager::begin() {
 void ScreenManager::set(Screen& screen) {
     _current = &screen;
 
-    // 1. layout
     _layout->setHasBottomBar(_current->hasBottomBar());
-
-    // 2. линии
     applyLayout();
 
-    // 3. экран
     _current->begin();
 
-    // 4. UI бары
     _statusBar->markDirty();
     _bottomBar->setVisible(_current->hasBottomBar());
     _bottomBar->markDirty();
@@ -78,7 +61,13 @@ void ScreenManager::update() {
     if (_current) {
         _current->update();
     }
+
     _statusBar->update();
+
+    // 🔥 DEBUG OVERLAY — ПОСЛЕДНИЙ СЛОЙ
+    if (UiDebugOverlay::isEnabled()) {
+        UiDebugOverlay::draw(*_tft);
+    }
 }
 
 bool ScreenManager::currentHasStatusBar() const {

@@ -1,27 +1,31 @@
 #include "services/ThemeService.h"
 #include "theme/Themes.h"
 
-void ThemeService::begin() {
-    _isNight = false;
+ThemeService::ThemeService(UiVersionService& uiVersion)
+    : _uiVersion(uiVersion)
+{
 }
 
-bool ThemeService::setNight(bool night) {
-    if (_isNight == night)
-        return false;
+void ThemeService::begin() {
+    _theme = THEME_DAY;
+    _night = false;
+}
 
-    _isNight = night;
-    return true;
+void ThemeService::setNight(bool night) {
+    if (_night == night)
+        return;
+
+    _night = night;
+    _theme = _night ? THEME_NIGHT : THEME_DAY;
+
+    // 🔥 логическое событие
+    _uiVersion.bump(UiChannel::THEME);
 }
 
 bool ThemeService::isNight() const {
-    return _isNight;
+    return _night;
 }
 
 const Theme& ThemeService::current() const {
-    // ------------------------------------------------------------
-    // ВАЖНО:
-    // Темы определены как constexpr (THEME_DAY / THEME_NIGHT),
-    // поэтому возвращаем ССЫЛКУ на них.
-    // ------------------------------------------------------------
-    return _isNight ? THEME_NIGHT : THEME_DAY;
+    return _theme;
 }

@@ -1,25 +1,30 @@
 #pragma once
-#include "theme/Theme.h"
+#include <stdint.h>
+
+#include "services/UiVersionService.h"
+#include "theme/Themes.h"
 
 /*
  * ThemeService
  * ------------
- * Хранит текущее состояние темы (день / ночь)
- * и отдаёт соответствующую структуру Theme.
+ * Управляет текущей темой (day / night).
+ * Любая смена темы → bump UiChannel::THEME
  */
+
 class ThemeService {
 public:
+    explicit ThemeService(UiVersionService& uiVersion);
+
     void begin();
 
-    // true, если тема реально сменилась
-    bool setNight(bool night);
-
-    // текущая тема (цвета)
-    const Theme& current() const;
-
-    // геттер состояния (нужен StatusBar)
+    void setNight(bool night);
     bool isNight() const;
 
+    const Theme& current() const;
+
 private:
-    bool _isNight = false;
+    UiVersionService& _uiVersion;
+
+    bool  _night = false;
+    Theme _theme;
 };
