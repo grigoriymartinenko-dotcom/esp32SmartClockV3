@@ -31,6 +31,10 @@ public:
     int clockY()  const;
     int bottomY() const;
 
+    // ===== BUTTON BAR (Settings / internal) =====
+    int buttonBarH() const;
+    int buttonBarY() const;
+
     // ===== SEPARATORS (ЛОГИЧЕСКАЯ ПОЗИЦИЯ) =====
     int sepStatusY() const;   // линия СРАЗУ под StatusBar
     int sepBottomY() const;   // линия СРАЗУ над BottomBar
@@ -43,7 +47,13 @@ private:
     Adafruit_ST7735& _tft;
 
     static constexpr int STATUS_H = 24;
+
+    // BottomBar (датчики) — как было
     static constexpr int BOTTOM_H = 36;
+
+    // ButtonBar (кнопки) — ниже на ~5мм (меньше высота => визуально "ниже")
+    // 5мм ≈ 18–20px → берём 20px.
+    static constexpr int BUTTONBAR_H = 20;
 
     bool _hasBottomBar = true;
 };

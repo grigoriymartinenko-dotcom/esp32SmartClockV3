@@ -47,8 +47,16 @@ int LayoutService::bottomY() const {
     return _tft.height() - BOTTOM_H;
 }
 
+// ===== BUTTON BAR (Settings / internal) =====
+int LayoutService::buttonBarH() const {
+    return BUTTONBAR_H;
+}
+
+int LayoutService::buttonBarY() const {
+    return _tft.height() - BUTTONBAR_H;
+}
+
 // ===== SEPARATORS =====
-// ЛОГИЧЕСКАЯ линия (физическую толщину рисует UiSeparator)
 int LayoutService::sepStatusY() const {
     return STATUS_H;
 }
@@ -61,7 +69,6 @@ int LayoutService::sepBottomY() const {
 }
 
 // ===== SAFE CLOCK RECT =====
-// ClockScreen НИКОГДА не рисует вплотную к линиям
 int LayoutService::clockSafeY() const {
     // 2px зарезервированы под линию Status
     return sepStatusY() + 2;

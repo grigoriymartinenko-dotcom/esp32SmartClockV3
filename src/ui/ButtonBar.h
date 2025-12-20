@@ -18,6 +18,13 @@
 
 class ButtonBar {
 public:
+    enum class ButtonId : uint8_t {
+        LEFT = 0,
+        OK,
+        RIGHT,
+        BACK
+    };
+
     ButtonBar(
         Adafruit_ST7735& tft,
         ThemeService& themeService,
@@ -35,6 +42,9 @@ public:
     // подсветка (например, какой action сейчас "выбран")
     void setHighlight(bool left, bool ok, bool right, bool back);
 
+    // мигнуть/подсветить кнопку как "нажато"
+    void flash(ButtonId id);
+
     // принудительная перерисовка (смена темы/экрана)
     void markDirty();
 
@@ -42,7 +52,9 @@ private:
     void clear();
     void draw();
 
-    void drawCell(int x, int y, int w, int h, const char* label, bool enabled, bool highlight);
+    void drawCell(int x, int y, int w, int h, const char* label, bool enabled, bool highlight, bool flash);
+
+    bool anyFlashActive() const;
 
 private:
     Adafruit_ST7735& _tft;
@@ -62,4 +74,12 @@ private:
     bool _hiOk    = false;
     bool _hiRight = false;
     bool _hiBack  = false;
+
+    // flash "нажатия" (реактивно, без millis)
+    uint8_t _flashLeft  = 0;
+    uint8_t _flashOk    = 0;
+    uint8_t _flashRight = 0;
+    uint8_t _flashBack  = 0;
+
+    static constexpr uint8_t FLASH_FRAMES = 2;
 };

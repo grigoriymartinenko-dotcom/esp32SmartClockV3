@@ -58,11 +58,11 @@ DhtService dht(DHT_PIN, DHT_TYPE);
 // =====================================================
 // BUTTONS (4 hardware buttons)
 // =====================================================
-// FIXED ранее: BTN1=GPIO17, BTN2=GPIO16, BTN3=GPIO22, BTN4=GPIO21
+// FIXED ранее: BTN1=GPIO17, BTN2=GPIO16, BTN3=GPIO21, BTN4=GPIO22
 #define BTN_LEFT   17
 #define BTN_RIGHT  16
-#define BTN_OK     22
-#define BTN_BACK   21
+#define BTN_OK     21
+#define BTN_BACK   22
 
 static const uint32_t BTN_DEBOUNCE_MS = 200;
 

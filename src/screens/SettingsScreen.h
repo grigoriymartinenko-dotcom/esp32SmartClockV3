@@ -58,10 +58,9 @@ private:
     ButtonBar _bar;
 
     bool _dirty = true;
-
     int  _selected = 0;
 
-    // демо-настройка (пока без привязки к реальным сервисам)
+    // демо-настройка (следующим шагом заменим на NightModeService)
     bool _nightAuto = true;
 
     bool _exitRequested = false;
