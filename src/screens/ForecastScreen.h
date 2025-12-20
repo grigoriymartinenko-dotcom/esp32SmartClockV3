@@ -3,7 +3,7 @@
 
 #include "core/Screen.h"
 #include "services/ForecastService.h"
-#include "layout/LayoutService.h"
+#include "services/LayoutService.h"
 
 /*
  * ForecastScreen
@@ -22,9 +22,9 @@ public:
 
     void begin() override;
     void update() override;
-
+    
+    bool hasBottomBar() const override { return false; }
     bool hasStatusBar() const override;
-    bool hasBottomBar() const override;
 
 private:
     void drawForecast();

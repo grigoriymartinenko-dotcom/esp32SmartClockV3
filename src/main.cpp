@@ -16,7 +16,7 @@
 #include "services/DhtService.h"
 
 // ================= LAYOUT =================
-#include "layout/LayoutService.h"
+#include "services/LayoutService.h"
 
 // ================= UI =================
 #include "ui/StatusBar.h"
@@ -254,7 +254,6 @@ if (timeService.syncState() == TimeService::ERROR) {
     if (screenManager.currentHasBottomBar()) {
         bottomBar.draw();
     }
-
     sepStatus.draw();
     sepBottom.draw();
 }

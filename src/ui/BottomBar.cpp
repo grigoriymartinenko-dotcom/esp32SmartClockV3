@@ -2,61 +2,67 @@
 
 BottomBar::BottomBar(
     Adafruit_ST7735& tft,
-    ThemeService& theme,
-    LayoutService& layout,
-    DhtService& dht
+    ThemeService& themeService,
+    LayoutService& layoutService,
+    DhtService& dhtService
 )
-: _tft(tft)
-, _theme(theme)
-, _layout(layout)
-, _dht(dht)
+: _tft(tft),
+  _themeService(themeService),
+  _layout(layoutService),
+  _dht(dhtService)
 {}
 
 void BottomBar::markDirty() {
     _dirty = true;
 }
 
+void BottomBar::setVisible(bool visible) {
+    if (_visible != visible) {
+        _visible = visible;
+        _dirty = true;
+    }
+}
+
 void BottomBar::draw() {
-    if (!_dirty) return;
-    _dirty = false;
-
-    const Theme& th = _theme.current();
-
-    const int y = _layout.bottomY();
-    const int h = _layout.bottomH();
-
-    _tft.setFont(nullptr);
-    _tft.setTextSize(1);
-    _tft.setTextWrap(false);
-
-    // фон
-    _tft.fillRect(0, y, _tft.width(), h, th.bg);
-
-    if (!_dht.isValid()) {
-        _tft.setTextColor(th.muted, th.bg);
-        _tft.setCursor(10, y + 10);
-        _tft.print("Sensor...");
+    if (!_visible) {
+        if (_wasVisible) {
+            clearInternal();      // стереть ОДИН раз
+            _wasVisible = false;
+        }
         return;
     }
 
-    float t = _dht.temperature();
-    float hmd = _dht.humidity();
+    _wasVisible = true;
 
-    // 🌡 температура
-    _tft.setTextColor(th.accent, th.bg);
-    _tft.setCursor(10, y + 10);
-    _tft.print("T");
+    if (!_dirty) return;
 
-    _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(22, y + 10);
-    _tft.printf("%.1fC", t);
+    clearInternal();
+    drawContent();
+    _dirty = false;
+}
 
-    // 💧 влажность
-    _tft.setTextColor(th.accent, th.bg);
-    _tft.setCursor(90, y + 10);
-    _tft.print("H");
+void BottomBar::clearInternal() {
+    const Theme& theme = _themeService.current();
 
-    _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(102, y + 10);
-    _tft.printf("%.0f%%", hmd);
+    _tft.fillRect(
+        0,
+        _layout.bottomY(),   // ✅ корректное имя
+        _tft.width(),
+        _layout.bottomH(),   // ✅ корректное имя
+        theme.bg             // ✅ каноничный фон
+    );
+}
+
+void BottomBar::drawContent() {
+    const Theme& theme = _themeService.current();
+
+    int temp = _dht.temperature();   // °C
+    int hum  = _dht.humidity();      // %
+
+    // ⚠️ ТВОЙ существующий код отрисовки
+    // пример (если нужно):
+    //
+    // _tft.setTextColor(theme.textPrimary);
+    // _tft.setCursor(4, _layout.bottomY() + 12);
+    // _tft.printf("%dC  %d%%", temp, hum);
 }

@@ -13,7 +13,9 @@ ScreenManager::ScreenManager(
 void ScreenManager::begin() {
     if (_current) {
         _current->begin();
+
         _statusBar->markDirty();
+        _bottomBar->setVisible(_current->hasBottomBar());
         _bottomBar->markDirty();
     }
 }
@@ -28,8 +30,9 @@ void ScreenManager::set(Screen& screen) {
     _current = &screen;
     _current->begin();
 
-    // 💥 КЛЮЧ: бары знают о смене экрана
     _statusBar->markDirty();
+
+    _bottomBar->setVisible(_current->hasBottomBar());
     _bottomBar->markDirty();
 }
 

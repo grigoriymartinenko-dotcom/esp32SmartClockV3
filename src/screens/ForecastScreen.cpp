@@ -88,7 +88,3 @@ void ForecastScreen::drawForecast() {
 bool ForecastScreen::hasStatusBar() const {
     return true;
 }
-
-bool ForecastScreen::hasBottomBar() const {
-    return false;
-}

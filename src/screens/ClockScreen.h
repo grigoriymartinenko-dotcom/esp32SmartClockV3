@@ -5,7 +5,7 @@
 #include "services/TimeService.h"
 #include "services/NightService.h"
 #include "services/ThemeService.h"
-#include "layout/LayoutService.h"
+#include "services/LayoutService.h"
 
 class ClockScreen : public Screen {
 public:
