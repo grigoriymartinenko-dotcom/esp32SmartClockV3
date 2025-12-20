@@ -34,11 +34,7 @@ void TimeService::update() {
 
     _lastUpdateMs = now;
 
-    // сбрасываем флаги
-    _secChanged  = false;
-    _minChanged  = false;
-    _hourChanged = false;
-    _dayChanged  = false;
+    bool anyChanged = false;
 
     if (getLocalTime(&_tm)) {
         _valid = true;
@@ -46,12 +42,12 @@ void TimeService::update() {
 
         if (!_wasValid) {
             Serial.println("[NTP] Time synchronized");
-            _dayChanged = true; // первый валид — полный апдейт
+            anyChanged = true; // первый валид — полный апдейт
         } else {
-            if (_tm.tm_sec  != _prevTm.tm_sec)  _secChanged  = true;
-            if (_tm.tm_min  != _prevTm.tm_min)  _minChanged  = true;
-            if (_tm.tm_hour != _prevTm.tm_hour) _hourChanged = true;
-            if (_tm.tm_mday != _prevTm.tm_mday) _dayChanged  = true;
+            if (_tm.tm_sec  != _prevTm.tm_sec)  anyChanged = true;
+            if (_tm.tm_min  != _prevTm.tm_min)  anyChanged = true;
+            if (_tm.tm_hour != _prevTm.tm_hour) anyChanged = true;
+            if (_tm.tm_mday != _prevTm.tm_mday) anyChanged = true;
         }
 
         _prevTm = _tm;
@@ -61,6 +57,7 @@ void TimeService::update() {
 
         if (_wasValid) {
             Serial.println("[NTP] Lost synchronization");
+            anyChanged = true;
         }
 
         if (_syncState == SYNCING) {
@@ -69,6 +66,14 @@ void TimeService::update() {
 
         _wasValid = false;
     }
+
+    if (anyChanged) {
+        _version.bump();
+    }
+}
+
+const ServiceVersion& TimeService::version() const {
+    return _version;
 }
 
 TimeService::SyncState TimeService::syncState() const {
@@ -78,12 +83,6 @@ TimeService::SyncState TimeService::syncState() const {
 bool TimeService::isValid() const {
     return _valid;
 }
-
-// ===== CHANGE FLAGS =====
-bool TimeService::secondChanged() { return _secChanged; }
-bool TimeService::minuteChanged() { return _minChanged; }
-bool TimeService::hourChanged()   { return _hourChanged; }
-bool TimeService::dayChanged()    { return _dayChanged; }
 
 // ===== TIME =====
 int TimeService::hour()   const { return _valid ? _tm.tm_hour : 0; }

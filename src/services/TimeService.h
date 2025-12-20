@@ -2,13 +2,14 @@
 
 #include <Arduino.h>
 #include <time.h>
+#include "core/ServiceVersion.h"
 
 /*
  * ============================================================
  * TimeService
  *
  * Управляет системным временем ESP32 (NTP).
- * ЯВЛЯЕТСЯ ИСТОЧНИКОМ СОБЫТИЙ ДЛЯ UI
+ * ЯВЛЯЕТСЯ ИСТОЧНИКОМ СОБЫТИЙ ДЛЯ UI (через versioning)
  * ============================================================
  */
 class TimeService {
@@ -30,6 +31,9 @@ public:
     void begin();
     void update();
 
+    // ===== VERSION =====
+    const ServiceVersion& version() const;
+
     // ===== SYNC STATUS =====
     SyncState syncState() const;
     bool isValid() const;
@@ -44,12 +48,6 @@ public:
     int month()  const;
     int year()   const;
     Weekday weekday() const;
-
-    // ===== CHANGE FLAGS (РЕАКТИВНОСТЬ) =====
-    bool secondChanged();
-    bool minuteChanged();
-    bool hourChanged();
-    bool dayChanged();
 
 private:
     void applyTimezone();
@@ -70,9 +68,6 @@ private:
     // sync state
     SyncState _syncState = NOT_STARTED;
 
-    // dirty flags
-    bool _secChanged  = false;
-    bool _minChanged  = false;
-    bool _hourChanged = false;
-    bool _dayChanged  = false;
+    // 🔥 VERSION
+    ServiceVersion _version;
 };

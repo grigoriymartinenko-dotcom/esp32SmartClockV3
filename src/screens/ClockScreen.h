@@ -31,8 +31,6 @@ private:
     NightService&    night;
     LayoutService&   layout;
 
-    int  lastH = -1;
-    int  lastM = -1;
-    int  lastS = -1;
     bool lastNight = false;
+    uint32_t lastTimeVersion = 0;
 };
