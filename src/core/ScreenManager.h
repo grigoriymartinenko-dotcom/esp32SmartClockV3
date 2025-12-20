@@ -8,6 +8,7 @@
 #include "ui/UiSeparator.h"
 #include "ui/UiDebugOverlay.h"
 #include "services/LayoutService.h"
+#include "services/UiVersionService.h"
 
 /*
  * ScreenManager
@@ -23,7 +24,8 @@ public:
         BottomBar& bottomBar,
         LayoutService& layout,
         UiSeparator& sepStatus,
-        UiSeparator& sepBottom
+        UiSeparator& sepBottom,
+        UiVersionService& uiVersion
     );
 
     void begin();
@@ -40,9 +42,12 @@ private:
 private:
     Adafruit_ST7735* _tft;
     Screen*          _current = nullptr;
+    Screen*          _prev    = nullptr;
+
     StatusBar*       _statusBar;
     BottomBar*       _bottomBar;
     LayoutService*   _layout;
     UiSeparator*     _sepStatus;
     UiSeparator*     _sepBottom;
+    UiVersionService* _uiVersion;
 };

@@ -1,5 +1,32 @@
 #include "screens/ClockScreen.h"
 
+// =====================================================
+// Fade config
+// =====================================================
+static constexpr uint8_t FADE_STEPS = 16;
+
+// =====================================================
+// RGB565 blend
+// =====================================================
+static uint16_t blend565(uint16_t bg, uint16_t fg, uint8_t a) {
+    uint8_t br = (bg >> 11) & 0x1F;
+    uint8_t bgc = (bg >> 5) & 0x3F;
+    uint8_t bb = bg & 0x1F;
+
+    uint8_t fr = (fg >> 11) & 0x1F;
+    uint8_t fg_c = (fg >> 5) & 0x3F;
+    uint8_t fb = fg & 0x1F;
+
+    uint8_t r = (br * (255 - a) + fr * a) / 255;
+    uint8_t g = (bgc * (255 - a) + fg_c * a) / 255;
+    uint8_t b = (bb * (255 - a) + fb * a) / 255;
+
+    return (r << 11) | (g << 5) | b;
+}
+
+// =====================================================
+// ctor
+// =====================================================
 ClockScreen::ClockScreen(
     Adafruit_ST7735& t,
     TimeService& timeService,
@@ -14,43 +41,51 @@ ClockScreen::ClockScreen(
     , night(nightService)
     , layout(layoutService)
     , uiVersion(uiVer)
-{
-}
+{}
 
+// =====================================================
+// begin
+// =====================================================
 void ClockScreen::begin() {
 
-    // фон
+    // старт fade ТОЛЬКО при смене экрана
+    uint32_t sv = uiVersion.version(UiChannel::SCREEN);
+    if (sv != lastScreenV) {
+        lastScreenV = sv;
+        fadeActive = true;
+        fadeStep = 0;
+    }
+
+    // жёсткая очистка всей области часов
     tft.fillRect(
         0,
-        layout.clockSafeY(),
+        layout.statusY() + layout.statusH(),
         tft.width(),
-        layout.clockSafeH(),
+        tft.height(),
         theme().bg
     );
 
-// ===== FULL CLEAR CLOCK AREA =====
-// Очищаем ВСЮ область от низа StatusBar до низа экрана
-// чтобы не осталось хвостов после SettingsScreen
-const int y0 = layout.statusY() + layout.statusH();
-const int h0 = tft.height() - y0;
-
-tft.fillRect(
-    0,
-    y0,
-    tft.width(),
-    h0,
-    theme().bg
-);
-
     lastTimeV  = uiVersion.version(UiChannel::TIME);
     lastThemeV = uiVersion.version(UiChannel::THEME);
-
-    drawTime(true);
 }
 
+// =====================================================
+// update
+// =====================================================
 void ClockScreen::update() {
 
-    // 🔥 Theme / Night changed
+    // ===== FADE =====
+    if (fadeActive) {
+        drawTime(true);
+        fadeStep++;
+
+        if (fadeStep >= FADE_STEPS) {
+            fadeActive = false;
+        }
+        return;
+    }
+
+    // ===== THEME =====
     uint32_t themeV = uiVersion.version(UiChannel::THEME);
     if (themeV != lastThemeV) {
         lastThemeV = themeV;
@@ -59,10 +94,7 @@ void ClockScreen::update() {
         return;
     }
 
-    if (!time.isValid())
-        return;
-
-    // 🔥 Time changed
+    // ===== TIME =====
     uint32_t timeV = uiVersion.version(UiChannel::TIME);
     if (timeV != lastTimeV) {
         lastTimeV = timeV;
@@ -70,10 +102,28 @@ void ClockScreen::update() {
     }
 }
 
+// =====================================================
+// drawTime
+// =====================================================
 void ClockScreen::drawTime(bool force) {
 
     if (!time.isValid())
         return;
+
+    // ===== fade alpha (ease-in) =====
+    uint8_t a = 255;
+    if (fadeActive) {
+        uint16_t t = (uint16_t)fadeStep * 255 / FADE_STEPS;
+        a = (t * t) / 255;   // мягкий старт
+    }
+
+    uint16_t timeColor = fadeActive
+        ? blend565(theme().bg, theme().textPrimary, a)
+        : theme().textPrimary;
+
+    uint16_t secColor = fadeActive
+        ? blend565(theme().bg, theme().muted, a)
+        : theme().muted;
 
     tft.setFont(nullptr);
     tft.setTextWrap(false);
@@ -102,27 +152,25 @@ void ClockScreen::drawTime(bool force) {
         tft.fillRect(X, Y, TIME_W, TIME_H, theme().bg);
     }
 
+    // ===== HH:MM =====
+    const bool colonVisible =
+        (uiVersion.version(UiChannel::TIME) % 2) == 0;
+
     tft.setTextSize(3);
-    tft.setTextColor(theme().textPrimary, theme().bg);
+    tft.setTextColor(timeColor, theme().bg);
     tft.setCursor(X, Y);
-    //tft.printf("%02d:%02d", h, m);
-const bool colonVisible =
-    (uiVersion.version(UiChannel::TIME) % 2) == 0;
 
-tft.setTextSize(3);
-tft.setTextColor(theme().textPrimary, theme().bg);
-tft.setCursor(X, Y);
+    if (colonVisible) {
+        tft.printf("%02d:%02d", h, m);
+    } else {
+        tft.printf("%02d %02d", h, m);
+    }
 
-if (colonVisible) {
-    tft.printf("%02d:%02d", h, m);
-} else {
-    tft.printf("%02d %02d", h, m);
-}
-
+    // ===== seconds =====
     if (showSeconds) {
         tft.fillRect(SEC_X, SEC_Y, 24, 12, theme().bg);
         tft.setTextSize(1);
-        tft.setTextColor(theme().muted, theme().bg);
+        tft.setTextColor(secColor, theme().bg);
         tft.setCursor(SEC_X, SEC_Y);
         tft.printf("%02d", s);
     } else if (force) {

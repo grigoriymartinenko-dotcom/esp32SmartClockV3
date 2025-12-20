@@ -180,9 +180,9 @@ ScreenManager screenManager(
     bottomBar,
     layout,
     sepStatus,
-    sepBottom
+    sepBottom,
+    uiVersion   // 👈 ВАЖНО
 );
-
 // =====================================================
 // ACTIVE SCREEN (local state for routing buttons)
 // =====================================================
@@ -308,7 +308,7 @@ void loop() {
 static uint32_t lastPrint = 0;
 if (now - lastPrint > 300) {
     lastPrint = now;
-
+/*
     Serial.printf(
         "[BTN raw] L=%d R=%d OK=%d BACK=%d\n",
         digitalRead(BTN_LEFT),
@@ -316,6 +316,7 @@ if (now - lastPrint > 300) {
         digitalRead(BTN_OK),
         digitalRead(BTN_BACK)
     );
+    */
 }
     const bool pLeft  = btnLeft.pressed(now);
     const bool pRight = btnRight.pressed(now);

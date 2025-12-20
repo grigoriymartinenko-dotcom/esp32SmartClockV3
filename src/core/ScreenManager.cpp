@@ -1,4 +1,6 @@
 #include "core/ScreenManager.h"
+#include "screens/SettingsScreen.h"
+#include "screens/ClockScreen.h"
 
 ScreenManager::ScreenManager(
     Adafruit_ST7735& tft,
@@ -7,7 +9,8 @@ ScreenManager::ScreenManager(
     BottomBar& bottomBar,
     LayoutService& layout,
     UiSeparator& sepStatus,
-    UiSeparator& sepBottom
+    UiSeparator& sepBottom,
+    UiVersionService& uiVersion
 )
 : _tft(&tft)
 , _current(&initial)
@@ -16,6 +19,7 @@ ScreenManager::ScreenManager(
 , _layout(&layout)
 , _sepStatus(&sepStatus)
 , _sepBottom(&sepBottom)
+, _uiVersion(&uiVersion)
 {}
 
 void ScreenManager::applyLayout() {
@@ -45,7 +49,16 @@ void ScreenManager::begin() {
 }
 
 void ScreenManager::set(Screen& screen) {
+
+    _prev = _current;
     _current = &screen;
+
+    // 🔥 Settings → Clock → запускаем fade через SCREEN version
+    if (_prev && _current) {
+        if (_prev->hasStatusBar() == false && _current->hasStatusBar() == true) {
+            _uiVersion->bump(UiChannel::SCREEN);
+        }
+    }
 
     _layout->setHasBottomBar(_current->hasBottomBar());
     applyLayout();
@@ -64,7 +77,6 @@ void ScreenManager::update() {
 
     _statusBar->update();
 
-    // 🔥 DEBUG OVERLAY — ПОСЛЕДНИЙ СЛОЙ
     if (UiDebugOverlay::isEnabled()) {
         UiDebugOverlay::draw(*_tft);
     }
