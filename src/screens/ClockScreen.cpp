@@ -3,7 +3,7 @@
 // =====================================================
 // Fade config (только HH:MM)
 // =====================================================
-static constexpr uint8_t FADE_STEPS = 30;
+static constexpr uint8_t FADE_STEPS = 5;
 
 // =====================================================
 // RGB565 blend
@@ -48,7 +48,6 @@ ClockScreen::ClockScreen(
 // =====================================================
 void ClockScreen::begin() {
 
-    // fade запускается только при смене экрана
     uint32_t sv = uiVersion.version(UiChannel::SCREEN);
     if (sv != lastScreenV) {
         lastScreenV = sv;
@@ -56,7 +55,6 @@ void ClockScreen::begin() {
         fadeStep = 0;
     }
 
-    // очистка области часов
     tft.fillRect(
         0,
         layout.statusY() + layout.statusH(),
@@ -74,11 +72,14 @@ void ClockScreen::begin() {
 // =====================================================
 void ClockScreen::update() {
 
-    // ===== FADE (только HH:MM) =====
+    // ===== FADE =====
     if (fadeActive) {
         drawTime(true);
-        fadeStep++;
 
+        // 🔥 КЛЮЧЕВО: не теряем обновления секунд
+        lastTimeV = uiVersion.version(UiChannel::TIME);
+
+        fadeStep++;
         if (fadeStep >= FADE_STEPS) {
             fadeActive = false;
         }
@@ -110,19 +111,16 @@ void ClockScreen::drawTime(bool force) {
     if (!time.isValid())
         return;
 
-    // ===== fade alpha (ТОЛЬКО для HH:MM) =====
     uint8_t a = 255;
     if (fadeActive) {
         uint16_t t = (uint16_t)fadeStep * 255 / FADE_STEPS;
-        a = (t * t) / 255;   // мягкий ease-in
+        a = (t * t) / 255;
     }
 
-    // HH:MM — с fade
     uint16_t timeColor = fadeActive
         ? blend565(theme().bg, theme().textPrimary, a)
         : theme().textPrimary;
 
-    // секунды — ВСЕГДА нормальный цвет
     uint16_t secColor = theme().muted;
 
     tft.setFont(nullptr);
@@ -152,7 +150,6 @@ void ClockScreen::drawTime(bool force) {
         tft.fillRect(X, Y, TIME_W, TIME_H, theme().bg);
     }
 
-    // ===== HH:MM =====
     const bool colonVisible =
         (uiVersion.version(UiChannel::TIME) % 2) == 0;
 
@@ -166,7 +163,6 @@ void ClockScreen::drawTime(bool force) {
         tft.printf("%02d %02d", h, m);
     }
 
-    // ===== seconds (без fade) =====
     if (showSeconds) {
         tft.fillRect(SEC_X, SEC_Y, 24, 12, theme().bg);
         tft.setTextSize(1);
