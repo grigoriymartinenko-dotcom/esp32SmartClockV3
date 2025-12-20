@@ -7,7 +7,7 @@ TimeService::TimeService(UiVersionService& uiVersion)
 }
 
 void TimeService::begin() {
-    syncNtp();
+    syncNtp();   // NTP стартует, но НЕ блокирует
 }
 
 void TimeService::setTimezone(long gmtOffsetSec, int daylightOffsetSec) {
@@ -16,65 +16,67 @@ void TimeService::setTimezone(long gmtOffsetSec, int daylightOffsetSec) {
     configTime(_gmtOffsetSec, _daylightOffsetSec, "pool.ntp.org");
 }
 
+void TimeService::setFromRtc(const tm& t) {
+    _timeinfo = t;
+    _valid = true;
+    _source = RTC;
+
+    _lastMinute = t.tm_min;
+    _lastSecond = t.tm_sec;
+
+    _uiVersion.bump(UiChannel::TIME);
+}
+
 void TimeService::update() {
     updateTime();
 }
 
 void TimeService::updateTime() {
-    if (!getLocalTime(&_timeinfo)) {
-        _syncState = ERROR;
+
+    tm t;
+    if (!getLocalTime(&t)) {
+        if (!_valid) {
+            _syncState = ERROR;
+        }
         return;
     }
 
+    _timeinfo = t;
+    _valid = true;
+    _source = NTP;
     _syncState = SYNCED;
 
-    // 🔹 логическое событие
-    if (_timeinfo.tm_min != _lastMinute) {
-        _lastMinute = _timeinfo.tm_min;
+    if (t.tm_min != _lastMinute) {
+        _lastMinute = t.tm_min;
         _uiVersion.bump(UiChannel::TIME);
     }
-    static int lastSecond = -1;
 
-if (_timeinfo.tm_sec != lastSecond) {
-    lastSecond = _timeinfo.tm_sec;
-    _uiVersion.bump(UiChannel::TIME); // 🔥 тик для blink
-}
+    if (t.tm_sec != _lastSecond) {
+        _lastSecond = t.tm_sec;
+        _uiVersion.bump(UiChannel::TIME); // blink
+    }
 }
 
 void TimeService::syncNtp() {
     _syncState = SYNCING;
 }
 
-int TimeService::hour() const {
-    return _timeinfo.tm_hour;
-}
-
-int TimeService::minute() const {
-    return _timeinfo.tm_min;
-}
-
-int TimeService::second() const {
-    return _timeinfo.tm_sec;
-}
-
-// ===== COMPATIBILITY =====
-
 bool TimeService::isValid() const {
-    return _syncState == SYNCED;
+    return _valid;
 }
 
-int TimeService::day() const {
-    return _timeinfo.tm_mday;
-}
+int TimeService::hour() const   { return _timeinfo.tm_hour; }
+int TimeService::minute() const { return _timeinfo.tm_min; }
+int TimeService::second() const { return _timeinfo.tm_sec; }
 
-int TimeService::month() const {
-    return _timeinfo.tm_mon + 1;
-}
-
-int TimeService::year() const {
-    return _timeinfo.tm_year + 1900;
-}
+int TimeService::day() const   { return _timeinfo.tm_mday; }
+int TimeService::month() const { return _timeinfo.tm_mon + 1; }
+int TimeService::year() const  { return _timeinfo.tm_year + 1900; }
 
 TimeService::SyncState TimeService::syncState() const {
     return _syncState;
+}
+
+TimeService::Source TimeService::source() const {
+    return _source;
 }

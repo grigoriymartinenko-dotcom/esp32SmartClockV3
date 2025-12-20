@@ -29,6 +29,16 @@
 #include "screens/ForecastScreen.h"
 #include "screens/SettingsScreen.h"
 
+#include <ThreeWire.h>
+#include <RtcDS1302.h>
+
+// ================= RTC (DS1302) =================
+#define RTC_CLK 14
+#define RTC_DAT 27
+#define RTC_RST 26
+
+ThreeWire rtcWire(RTC_DAT, RTC_CLK, RTC_RST);
+RtcDS1302<ThreeWire> rtc(rtcWire);
 // =====================================================
 // TFT
 // =====================================================
@@ -243,6 +253,22 @@ void setup() {
     // ---------- DHT ----------
     dht.begin();
 
+    // ---------- RTC ----------
+rtc.Begin();
+
+if (rtc.IsDateTimeValid()) {
+    RtcDateTime now = rtc.GetDateTime();
+
+    tm t{};
+    t.tm_year = now.Year() - 1900;
+    t.tm_mon  = now.Month() - 1;
+    t.tm_mday = now.Day();
+    t.tm_hour = now.Hour();
+    t.tm_min  = now.Minute();
+    t.tm_sec  = now.Second();
+
+    timeService.setFromRtc(t);
+}
     // ---------- Wi-Fi ----------
     statusBar.setWiFiStatus(StatusBar::CONNECTING);
     WiFi.begin(WIFI_SSID, WIFI_PASS);

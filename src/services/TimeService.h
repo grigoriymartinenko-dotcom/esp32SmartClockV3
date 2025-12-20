@@ -7,9 +7,9 @@
 /*
  * TimeService
  * -----------
- * Источник времени + NTP
- * v3.2: версии
- * v3.1: старый API сохранён
+ * Источник времени:
+ *  RTC → первичный
+ *  NTP → вторичный (апдейт)
  */
 
 class TimeService {
@@ -21,6 +21,12 @@ public:
         ERROR
     };
 
+    enum Source {
+        NONE,
+        RTC,
+        NTP
+    };
+
     explicit TimeService(UiVersionService& uiVersion);
 
     void begin();
@@ -28,12 +34,15 @@ public:
 
     void setTimezone(long gmtOffsetSec, int daylightOffsetSec);
 
+    // ===== RTC =====
+    void setFromRtc(const tm& t);
+
     // ===== TIME =====
     int hour()   const;
     int minute() const;
     int second() const;
 
-    // ===== DATE (для StatusBar) =====
+    // ===== DATE =====
     bool isValid() const;
 
     int day()   const;
@@ -41,6 +50,7 @@ public:
     int year()  const;
 
     SyncState syncState() const;
+    Source source() const;
 
 private:
     void updateTime();
@@ -50,9 +60,13 @@ private:
     UiVersionService& _uiVersion;
 
     tm _timeinfo{};
+    bool _valid = false;
+    Source _source = NONE;
+
     SyncState _syncState = NOT_STARTED;
 
     int _lastMinute = -1;
+    int _lastSecond = -1;
 
     long _gmtOffsetSec = 0;
     int  _daylightOffsetSec = 0;
