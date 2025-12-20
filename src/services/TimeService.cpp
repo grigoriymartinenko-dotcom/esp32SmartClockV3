@@ -18,6 +18,7 @@ void TimeService::applyTimezone() {
 
 void TimeService::begin() {
     _valid = false;
+    _wasValid = false;
     _lastUpdateMs = 0;
 
     _syncState = SYNCING;
@@ -33,25 +34,40 @@ void TimeService::update() {
 
     _lastUpdateMs = now;
 
-    bool wasValid = _valid;
+    // сбрасываем флаги
+    _secChanged  = false;
+    _minChanged  = false;
+    _hourChanged = false;
+    _dayChanged  = false;
 
     if (getLocalTime(&_tm)) {
         _valid = true;
         _syncState = SYNCED;
 
-        if (!wasValid) {
+        if (!_wasValid) {
             Serial.println("[NTP] Time synchronized");
+            _dayChanged = true; // первый валид — полный апдейт
+        } else {
+            if (_tm.tm_sec  != _prevTm.tm_sec)  _secChanged  = true;
+            if (_tm.tm_min  != _prevTm.tm_min)  _minChanged  = true;
+            if (_tm.tm_hour != _prevTm.tm_hour) _hourChanged = true;
+            if (_tm.tm_mday != _prevTm.tm_mday) _dayChanged  = true;
         }
+
+        _prevTm = _tm;
+        _wasValid = true;
     } else {
         _valid = false;
 
-        if (wasValid) {
+        if (_wasValid) {
             Serial.println("[NTP] Lost synchronization");
         }
 
         if (_syncState == SYNCING) {
             _syncState = ERROR;
         }
+
+        _wasValid = false;
     }
 }
 
@@ -62,6 +78,12 @@ TimeService::SyncState TimeService::syncState() const {
 bool TimeService::isValid() const {
     return _valid;
 }
+
+// ===== CHANGE FLAGS =====
+bool TimeService::secondChanged() { return _secChanged; }
+bool TimeService::minuteChanged() { return _minChanged; }
+bool TimeService::hourChanged()   { return _hourChanged; }
+bool TimeService::dayChanged()    { return _dayChanged; }
 
 // ===== TIME =====
 int TimeService::hour()   const { return _valid ? _tm.tm_hour : 0; }

@@ -5,37 +5,75 @@ LayoutService::LayoutService(Adafruit_ST7735& tft)
 {}
 
 void LayoutService::begin() {
-    _clockH = _tft.height() - STATUS_H - BOTTOM_H;
+    // геометрия считается динамически
+}
+
+// ===== FLAGS =====
+void LayoutService::setHasBottomBar(bool v) {
+    _hasBottomBar = v;
+}
+
+bool LayoutService::hasBottomBar() const {
+    return _hasBottomBar;
 }
 
 // ===== HEIGHTS =====
-int LayoutService::statusH() const { return STATUS_H; }
-int LayoutService::clockH()  const { return _clockH; }
-int LayoutService::bottomH() const { return BOTTOM_H; }
+int LayoutService::statusH() const {
+    return STATUS_H;
+}
+
+int LayoutService::bottomH() const {
+    return _hasBottomBar ? BOTTOM_H : 0;
+}
+
+int LayoutService::clockH() const {
+    int h = _tft.height() - STATUS_H;
+    if (_hasBottomBar) {
+        h -= BOTTOM_H;
+    }
+    return h;
+}
 
 // ===== Y POSITIONS =====
-int LayoutService::statusY() const { return 0; }
-int LayoutService::clockY()  const { return STATUS_H; }
-int LayoutService::bottomY() const { return _tft.height() - BOTTOM_H; }
+int LayoutService::statusY() const {
+    return 0;
+}
 
-// ===== SEPARATORS (2px OFFSET) =====
+int LayoutService::clockY() const {
+    return STATUS_H;
+}
+
+int LayoutService::bottomY() const {
+    return _tft.height() - BOTTOM_H;
+}
+
+// ===== SEPARATORS =====
+// ЛОГИЧЕСКАЯ линия (физическую толщину рисует UiSeparator)
 int LayoutService::sepStatusY() const {
-    // линия чуть ниже нижней границы статусбара
-    return STATUS_H + SEP_OFFSET;
+    return STATUS_H;
 }
 
 int LayoutService::sepBottomY() const {
-    // линия чуть выше верхней границы нижнего бара
-    return bottomY() - SEP_OFFSET;
+    if (!_hasBottomBar) {
+        return -1;
+    }
+    return bottomY();
 }
 
 // ===== SAFE CLOCK RECT =====
+// ClockScreen НИКОГДА не рисует вплотную к линиям
 int LayoutService::clockSafeY() const {
-    // ниже верхней линии на 1px (чтобы не затирать её)
-    return sepStatusY() + 1;
+    // 2px зарезервированы под линию Status
+    return sepStatusY() + 2;
 }
 
 int LayoutService::clockSafeH() const {
-    // до нижней линии -1px
-    return (sepBottomY() - 1) - clockSafeY();
+    int top = clockSafeY();
+
+    if (_hasBottomBar) {
+        // 2px зарезервированы под нижнюю линию
+        return sepBottomY() - 2 - top;
+    }
+
+    return _tft.height() - top;
 }

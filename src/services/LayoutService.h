@@ -4,17 +4,22 @@
 /*
  * LayoutService
  * -------------
- * Единственный источник координат и размеров UI-зон.
+ * ЕДИНСТВЕННЫЙ источник координат UI.
  *
- * Правило:
- *  - экраны (ClockScreen) рисуют ТОЛЬКО внутри safe-областей
- *  - линии/сепараторы рисуются отдельно (UiSeparator)
+ * ПРИНЦИП:
+ *  - LayoutService оперирует ЛОГИЧЕСКИМИ зонами
+ *  - Толщина линий = ответственность UiSeparator
+ *  - НИКАКИХ offset / магических +1 / -1
  */
 class LayoutService {
 public:
     explicit LayoutService(Adafruit_ST7735& tft);
 
     void begin();
+
+    // ===== FLAGS =====
+    void setHasBottomBar(bool v);
+    bool hasBottomBar() const;
 
     // ===== HEIGHTS =====
     int statusH() const;
@@ -26,13 +31,13 @@ public:
     int clockY()  const;
     int bottomY() const;
 
-    // ===== SEPARATORS (визуальные линии) =====
-    int sepStatusY() const;   // линия после StatusBar
-    int sepBottomY() const;   // линия перед BottomBar
+    // ===== SEPARATORS (ЛОГИЧЕСКАЯ ПОЗИЦИЯ) =====
+    int sepStatusY() const;   // линия СРАЗУ под StatusBar
+    int sepBottomY() const;   // линия СРАЗУ над BottomBar
 
-    // ===== SAFE CLOCK RECT (область, где ClockScreen МОЖЕТ рисовать) =====
-    int clockSafeY() const;   // старт ниже верхней линии
-    int clockSafeH() const;   // высота до нижней линии
+    // ===== SAFE CLOCK RECT =====
+    int clockSafeY() const;
+    int clockSafeH() const;
 
 private:
     Adafruit_ST7735& _tft;
@@ -40,8 +45,5 @@ private:
     static constexpr int STATUS_H = 24;
     static constexpr int BOTTOM_H = 36;
 
-    // визуальные отступы линий от зон
-    static constexpr int SEP_OFFSET = 2;
-
-    int _clockH = 0;
+    bool _hasBottomBar = true;
 };

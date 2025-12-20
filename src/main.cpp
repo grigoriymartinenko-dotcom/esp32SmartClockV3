@@ -51,12 +51,11 @@ DhtService dht(DHT_PIN, DHT_TYPE);
 
 bool lastForecastBtn = HIGH;
 bool lastClockBtn    = HIGH;
-
 uint32_t lastBtnMs = 0;
 const uint32_t BTN_DEBOUNCE_MS = 200;
 
 // =====================================================
-// Wi-Fi + OpenWeather
+// Wi-Fi / Weather
 // =====================================================
 static const char* WIFI_SSID = "grig";
 static const char* WIFI_PASS = "magnetic";
@@ -86,13 +85,9 @@ ForecastService forecastService(
 LayoutService layout(tft);
 
 // =====================================================
-// UI BARS
+// UI
 // =====================================================
-StatusBar statusBar(
-    tft,
-    themeService,
-    timeService
-);
+StatusBar statusBar(tft, themeService, timeService);
 
 BottomBar bottomBar(
     tft,
@@ -131,7 +126,10 @@ ForecastScreen forecastScreen(
 ScreenManager screenManager(
     clockScreen,
     statusBar,
-    bottomBar
+    bottomBar,
+    layout,
+    sepStatus,
+    sepBottom
 );
 
 // =====================================================
@@ -162,20 +160,12 @@ void setup() {
     // ---------- DHT ----------
     dht.begin();
 
-    sepStatus.setY(layout.sepStatusY());
-    sepBottom.setY(layout.sepBottomY());
-
     // ---------- Wi-Fi ----------
-    Serial.println("[WiFi] Connecting...");
     statusBar.setWiFiStatus(StatusBar::CONNECTING);
-
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+        delay(300);
     }
-    Serial.println("\n[WiFi] Connected");
-
     statusBar.setWiFiStatus(StatusBar::ONLINE);
 
     // ---------- Forecast ----------
@@ -195,65 +185,70 @@ void loop() {
     forecastService.update();
     dht.update();
 
-    // ---------- NTP → StatusBar ----------
+    // ==================================================
+    // NTP → StatusBar (FIXED LOGIC)
+    // ==================================================
     static TimeService::SyncState lastNtpState = TimeService::NOT_STARTED;
-    auto st = timeService.syncState();
+    static bool ntpEverSynced = false;
+
+    TimeService::SyncState st = timeService.syncState();
 
     if (st != lastNtpState) {
+
         if (st == TimeService::SYNCED) {
+            ntpEverSynced = true;
             statusBar.setNtpStatus(StatusBar::ONLINE);
-        } else if (st == TimeService::SYNCING) {
-            statusBar.setNtpStatus(StatusBar::CONNECTING);
-        } else {
-            statusBar.setNtpStatus(StatusBar::OFFLINE);
         }
+        else if (st == TimeService::SYNCING) {
+            statusBar.setNtpStatus(StatusBar::CONNECTING);
+        }
+        else if (st == TimeService::ERROR) {
+            statusBar.setNtpStatus(StatusBar::ERROR);
+        }
+        else {
+            // NOT_STARTED / IDLE
+            statusBar.setNtpStatus(
+                ntpEverSynced ? StatusBar::ONLINE
+                              : StatusBar::OFFLINE
+            );
+        }
+
         lastNtpState = st;
     }
-if (timeService.syncState() == TimeService::ERROR) {
-    statusBar.setNtpStatus(StatusBar::ERROR);
-}
-    // ---------- BottomBar refresh ----------
-    static uint32_t lastUiMs = 0;
-    if (millis() - lastUiMs > 3000) {
-        lastUiMs = millis();
-        bottomBar.markDirty();
+
+    // ==================================================
+    // Buttons
+    // ==================================================
+    bool f = digitalRead(BTN_FORECAST);
+    bool c = digitalRead(BTN_CLOCK);
+    uint32_t now = millis();
+
+    if (lastForecastBtn == HIGH && f == LOW && now - lastBtnMs > BTN_DEBOUNCE_MS) {
+        screenManager.set(forecastScreen);
+        lastBtnMs = now;
     }
 
-    // ---------- Buttons ----------
-    bool forecastBtn = digitalRead(BTN_FORECAST);
-    bool clockBtn    = digitalRead(BTN_CLOCK);
-    uint32_t nowMs = millis();
-
-    if (lastForecastBtn == HIGH && forecastBtn == LOW) {
-        if (nowMs - lastBtnMs > BTN_DEBOUNCE_MS) {
-            screenManager.set(forecastScreen);
-            sepStatus.markDirty();
-            sepBottom.markDirty();
-            lastBtnMs = nowMs;
-        }
+    if (lastClockBtn == HIGH && c == LOW && now - lastBtnMs > BTN_DEBOUNCE_MS) {
+        screenManager.set(clockScreen);
+        lastBtnMs = now;
     }
 
-    if (lastClockBtn == HIGH && clockBtn == LOW) {
-        if (nowMs - lastBtnMs > BTN_DEBOUNCE_MS) {
-            screenManager.set(clockScreen);
-            sepStatus.markDirty();
-            sepBottom.markDirty();
-            lastBtnMs = nowMs;
-        }
-    }
+    lastForecastBtn = f;
+    lastClockBtn    = c;
 
-    lastForecastBtn = forecastBtn;
-    lastClockBtn    = clockBtn;
-
-    // ---------- Draw order ----------
+    // ==================================================
+    // Draw order
+    // ==================================================
     screenManager.update();
 
     if (screenManager.currentHasStatusBar()) {
-        statusBar.draw();
+        statusBar.update();
     }
+
     if (screenManager.currentHasBottomBar()) {
-        bottomBar.draw();
+        bottomBar.update();
     }
-    sepStatus.draw();
-    sepBottom.draw();
+
+sepStatus.update();
+sepBottom.update();
 }

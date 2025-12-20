@@ -1,11 +1,18 @@
 #pragma once
 #include <Adafruit_ST7735.h>
+
 #include "services/ThemeService.h"
 
 /*
  * UiSeparator
  * -----------
- * Горизонтальный разделитель зон интерфейса
+ * Горизонтальная линия-разделитель UI.
+ *
+ * ПРАВИЛА:
+ *  - НЕТ таймеров
+ *  - НЕТ millis()
+ *  - Рисует ТОЛЬКО через update()
+ *  - y < 0  => линия отключена
  */
 class UiSeparator {
 public:
@@ -15,15 +22,21 @@ public:
         int y
     );
 
-    void draw();
-    void markDirty();
-
+    // 🔹 изменить позицию линии
     void setY(int y);
 
-private:
-    Adafruit_ST7735& _tft;
-    ThemeService&   _theme;
+    // 🔹 реактивное обновление
+    void update();
 
-    int  _y;
+    // 🔹 принудительно пометить на перерисовку
+    void markDirty();
+
+private:
+    void draw();
+
+    Adafruit_ST7735& _tft;
+    ThemeService&    _theme;
+
+    int  _y = -1;
     bool _dirty = true;
 };

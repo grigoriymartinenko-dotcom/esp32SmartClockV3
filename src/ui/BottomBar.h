@@ -5,6 +5,17 @@
 #include "services/LayoutService.h"
 #include "services/DhtService.h"
 
+/*
+ * BottomBar
+ * ---------
+ * Нижняя информационная панель (температура / влажность).
+ *
+ * ПРАВИЛА:
+ *  - НЕТ таймеров
+ *  - НЕТ millis()
+ *  - Рисует ТОЛЬКО через update()
+ *  - Все события приходят СНАРУЖИ
+ */
 class BottomBar {
 public:
     BottomBar(
@@ -14,21 +25,23 @@ public:
         DhtService& dhtService
     );
 
-    void draw();
-    void markDirty();
-    void setVisible(bool visible);
+    // 🔹 реактивное обновление
+    void update();
+
+    // 🔹 события
+    void markDirty();              // данные / тема изменились
+    void setVisible(bool visible); // экран показал / скрыл BottomBar
 
 private:
-    void clearInternal();
+    void clear();
     void drawContent();
 
-private:
     Adafruit_ST7735& _tft;
     ThemeService&    _themeService;
     LayoutService&  _layout;
     DhtService&     _dht;
 
-    bool _visible    = true;
-    bool _wasVisible = true;
-    bool _dirty      = true;
+    bool _visible     = true;
+    bool _wasVisible  = false;
+    bool _dirty       = true;
 };

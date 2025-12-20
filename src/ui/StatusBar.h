@@ -1,5 +1,6 @@
 #pragma once
 #include <Adafruit_ST7735.h>
+
 #include "services/ThemeService.h"
 #include "services/TimeService.h"
 
@@ -7,13 +8,15 @@
  * StatusBar
  * ---------
  * Верхняя статусная панель:
- * Wi-Fi / дата / NTP
+ *  - Wi-Fi статус
+ *  - дата
+ *  - NTP статус
  *
- * Состояния:
- *  OFFLINE     -> '-' серый
- *  CONNECTING  -> '*' синий, мигающий
- *  ONLINE      -> '+' серый
- *  ERROR       -> '!' красный
+ * ПРАВИЛА:
+ *  - НЕТ таймеров
+ *  - НЕТ millis()
+ *  - Рисует ТОЛЬКО по dirty-флагу
+ *  - Вся логика "когда" — СНАРУЖИ
  */
 class StatusBar {
 public:
@@ -32,16 +35,24 @@ public:
         TimeService& time
     );
 
-    void draw();
+    // 🔹 реактивное обновление
+    void update();
+
+    // 🔹 пометить на перерисовку (всё)
     void markDirty();
 
+    // 🔹 события статусов
     void setWiFiStatus(Status s);
     void setNtpStatus(Status s);
 
 private:
+    void draw();        // рисует ВСЮ панель
+    char statusChar(Status s) const;
+    uint16_t statusColor(Status s, const Theme& th) const;
+
     Adafruit_ST7735& _tft;
-    ThemeService&   _theme;
-    TimeService&    _time;
+    ThemeService&    _theme;
+    TimeService&     _time;
 
     Status _wifi = OFFLINE;
     Status _ntp  = OFFLINE;

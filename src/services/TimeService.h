@@ -8,6 +8,7 @@
  * TimeService
  *
  * Управляет системным временем ESP32 (NTP).
+ * ЯВЛЯЕТСЯ ИСТОЧНИКОМ СОБЫТИЙ ДЛЯ UI
  * ============================================================
  */
 class TimeService {
@@ -42,14 +43,22 @@ public:
     int day()    const;
     int month()  const;
     int year()   const;
-
     Weekday weekday() const;
+
+    // ===== CHANGE FLAGS (РЕАКТИВНОСТЬ) =====
+    bool secondChanged();
+    bool minuteChanged();
+    bool hourChanged();
+    bool dayChanged();
 
 private:
     void applyTimezone();
 
     tm _tm {};
+    tm _prevTm {};
+
     bool _valid = false;
+    bool _wasValid = false;
 
     unsigned long _lastUpdateMs = 0;
     static constexpr unsigned long UPDATE_INTERVAL = 1000;
@@ -60,4 +69,10 @@ private:
 
     // sync state
     SyncState _syncState = NOT_STARTED;
+
+    // dirty flags
+    bool _secChanged  = false;
+    bool _minChanged  = false;
+    bool _hourChanged = false;
+    bool _dayChanged  = false;
 };
