@@ -1,5 +1,15 @@
 # esp32SmartClockV3
 
+## 🖼 Screenshots
+### Clock Screen
+![Clock Screen](assets/screenshots/clock.png)
+### Settings
+![Settings Screen](assets/screenshots/settings.png)
+### Timezone & DST
+![Timezone Screen](assets/screenshots/timezone.png)
+### Weather Forecast
+![Forecast Screen](assets/screenshots/forecast.png)
+
 ⏰ ESP32 Smart Clock v3
 Умные часы на ESP32 с TFT-дисплеем, аппаратными кнопками, RTC, NTP, погодой и аккуратно спроектированным UI.
 Проект ориентирован на:
