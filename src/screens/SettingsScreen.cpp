@@ -1,19 +1,20 @@
 #include "screens/SettingsScreen.h"
 
-/*
- * SettingsScreen
- * --------------
- * Root Settings + Night Mode submenu
- * 4 hardware buttons UX
- */
+// ======================================================
+// Timezone list — ОБЯЗАТЕЛЬНОЕ определение
+// ======================================================
+constexpr SettingsScreen::TzItem SettingsScreen::TZ_LIST[];
 
-// ================= ctor =================
+// ======================================================
+// ctor
+// ======================================================
 
 SettingsScreen::SettingsScreen(
     Adafruit_ST7735& tft,
     ThemeService& themeService,
     LayoutService& layoutService,
     NightService& nightService,
+    TimeService& timeService,
     UiVersionService& uiVersion
 )
     : Screen(themeService)
@@ -21,11 +22,13 @@ SettingsScreen::SettingsScreen(
     , _layout(layoutService)
     , _bar(tft, themeService, layoutService)
     , _night(nightService)
+    , _time(timeService)
     , _ui(uiVersion)
-{
-}
+{}
 
-// ================= lifecycle =================
+// ======================================================
+// lifecycle
+// ======================================================
 
 void SettingsScreen::begin() {
     _exitRequested = false;
@@ -42,10 +45,15 @@ void SettingsScreen::begin() {
 void SettingsScreen::update() {
     _bar.setHighlight(false, false, false, false);
 
-    // мигание — только локальный redraw
+    // локальное мигание без fillScreen
     if (_level == Level::NIGHT_MODE && _editing) {
         _ui.bump(UiChannel::SCREEN);
         drawNightMenu();
+    }
+
+    if (_level == Level::TIMEZONE && _tzEditing) {
+        _ui.bump(UiChannel::SCREEN);
+        drawTimezoneMenu();
     }
 
     if (_dirty) {
@@ -61,18 +69,20 @@ void SettingsScreen::onThemeChanged() {
     _dirty = true;
 }
 
-// ================= buttons (called by AppController) =================
+// ======================================================
+// buttons (called by AppController)
+// ======================================================
 
 void SettingsScreen::onLeft() {
     _bar.flash(ButtonBar::ButtonId::LEFT);
 
     if (_level == Level::ROOT) {
-        if (_selected > 0) {
-            _selected--;
-            _dirty = true;
-        }
-    } else {
+        _selected = (_selected + ITEM_COUNT - 1) % ITEM_COUNT;
+        _dirty = true;
+    } else if (_level == Level::NIGHT_MODE) {
         nightLeft();
+    } else {
+        tzLeft();
     }
 }
 
@@ -80,40 +90,39 @@ void SettingsScreen::onRight() {
     _bar.flash(ButtonBar::ButtonId::RIGHT);
 
     if (_level == Level::ROOT) {
-        if (_selected < ITEM_COUNT - 1) {
-            _selected++;
-            _dirty = true;
-        }
-    } else {
+        _selected = (_selected + 1) % ITEM_COUNT;
+        _dirty = true;
+    } else if (_level == Level::NIGHT_MODE) {
         nightRight();
+    } else {
+        tzRight();
     }
 }
 
 void SettingsScreen::onOk() {
     _bar.flash(ButtonBar::ButtonId::OK);
 
-    if (_level == Level::NIGHT_MODE) {
-        nightUp();
-    }
+    if (_level == Level::NIGHT_MODE) nightUp();
+    if (_level == Level::TIMEZONE)   tzUp();
 }
 
 void SettingsScreen::onBack() {
     _bar.flash(ButtonBar::ButtonId::BACK);
 
-    if (_level == Level::NIGHT_MODE) {
-        nightDown();
-    }
+    if (_level == Level::NIGHT_MODE) nightDown();
+    if (_level == Level::TIMEZONE)   tzDown();
 }
 
 void SettingsScreen::onOkLong() {
     _bar.flash(ButtonBar::ButtonId::OK);
 
     if (_level == Level::ROOT) {
-        if (_selected == 2) { // Night mode
-            enterNightMenu();
-        }
-    } else {
+        if (_selected == 1) enterTimezoneMenu();
+        if (_selected == 2) enterNightMenu();
+    } else if (_level == Level::NIGHT_MODE) {
         nightEnter();
+    } else {
+        tzEnter();
     }
 }
 
@@ -122,12 +131,16 @@ void SettingsScreen::onBackLong() {
 
     if (_level == Level::ROOT) {
         _exitRequested = true;
-    } else {
+    } else if (_level == Level::NIGHT_MODE) {
         nightExit();
+    } else {
+        tzExit();
     }
 }
 
-// ================= exit =================
+// ======================================================
+// exit
+// ======================================================
 
 bool SettingsScreen::exitRequested() const {
     return _exitRequested;
@@ -137,7 +150,9 @@ void SettingsScreen::clearExitRequest() {
     _exitRequested = false;
 }
 
-// ================= draw =================
+// ======================================================
+// draw root
+// ======================================================
 
 void SettingsScreen::redrawAll() {
     const Theme& th = theme();
@@ -146,8 +161,10 @@ void SettingsScreen::redrawAll() {
     if (_level == Level::ROOT) {
         drawTitle();
         drawList();
-    } else {
+    } else if (_level == Level::NIGHT_MODE) {
         drawNightMenu();
+    } else {
+        drawTimezoneMenu();
     }
 
     _bar.markDirty();
@@ -155,7 +172,6 @@ void SettingsScreen::redrawAll() {
 
 void SettingsScreen::drawTitle() {
     const Theme& th = theme();
-
     _tft.setTextSize(2);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.setCursor(20, 8);
@@ -167,18 +183,15 @@ void SettingsScreen::drawList() {
 
     const int top = 36;
     const int bottom = _layout.buttonBarY();
-    const int h = bottom - top;
-    const int rowH = h / ITEM_COUNT;
+    const int rowH = (bottom - top) / ITEM_COUNT;
 
     for (int i = 0; i < ITEM_COUNT; i++) {
         int y = top + i * rowH;
-
-        bool sel = (i == _selected);
-        uint16_t color = sel ? th.accent : th.textPrimary;
+        uint16_t color = (i == _selected) ? th.accent : th.textPrimary;
 
         _tft.setTextSize(1);
         _tft.setTextColor(color, th.bg);
-        _tft.setCursor(12, y + (rowH - 8) / 2);
+        _tft.setCursor(12, y + 4);
 
         if (i == 0) _tft.print("Wi-Fi");
         if (i == 1) _tft.print("Timezone");
@@ -189,7 +202,9 @@ void SettingsScreen::drawList() {
     }
 }
 
-// ================= night submenu =================
+// ======================================================
+// Night Mode submenu
+// ======================================================
 
 void SettingsScreen::enterNightMenu() {
     _level = Level::NIGHT_MODE;
@@ -209,7 +224,6 @@ void SettingsScreen::exitNightMenu(bool apply) {
         _night.setMode(_tmpMode);
         _night.setAutoRange(_tmpStartMin, _tmpEndMin);
     }
-
     _level = Level::ROOT;
     _editing = false;
     _dirty = true;
@@ -231,35 +245,21 @@ void SettingsScreen::nightExit() {
 }
 
 void SettingsScreen::nightLeft() {
-    if (_editing) {
-        // редактирование времени: HH ↔ MM
-        if (_nightField != NightField::MODE) {
-            _timePart = TimePart::HH;
-        }
-    } else {
-        // навигация по пунктам ПО КРУГУ
-        if (_nightField == NightField::MODE) {
-            _nightField = NightField::END;
-        } else {
-            _nightField = static_cast<NightField>((int)_nightField - 1);
-        }
+    if (_editing && _nightField != NightField::MODE) {
+        _timePart = TimePart::HH;
+    } else if (!_editing) {
+        if (_nightField == NightField::MODE) _nightField = NightField::END;
+        else _nightField = (NightField)((int)_nightField - 1);
     }
     _dirty = true;
 }
 
 void SettingsScreen::nightRight() {
-    if (_editing) {
-        // редактирование времени: HH ↔ MM
-        if (_nightField != NightField::MODE) {
-            _timePart = TimePart::MM;
-        }
-    } else {
-        // навигация по пунктам ПО КРУГУ
-        if (_nightField == NightField::END) {
-            _nightField = NightField::MODE;
-        } else {
-            _nightField = static_cast<NightField>((int)_nightField + 1);
-        }
+    if (_editing && _nightField != NightField::MODE) {
+        _timePart = TimePart::MM;
+    } else if (!_editing) {
+        if (_nightField == NightField::END) _nightField = NightField::MODE;
+        else _nightField = (NightField)((int)_nightField + 1);
     }
     _dirty = true;
 }
@@ -302,15 +302,12 @@ void SettingsScreen::nightDown() {
 
 void SettingsScreen::drawNightMenu() {
     const Theme& th = theme();
-
-    // медленное мигание
     bool blinkOn = ((_ui.version(UiChannel::SCREEN) / 8) % 2) == 0;
 
-    const uint16_t editColor = ST77XX_WHITE;   // редактирование
-    const uint16_t navColor  = th.accent;      // навигация
-    const uint16_t normColor = th.textPrimary; // обычный текст
+    const uint16_t editColor = ST77XX_WHITE;
+    const uint16_t navColor  = th.accent;
+    const uint16_t normColor = th.textPrimary;
 
-    // ===== TITLE =====
     _tft.setTextSize(2);
     _tft.setTextColor(normColor, th.bg);
     _tft.setCursor(20, 8);
@@ -320,37 +317,25 @@ void SettingsScreen::drawNightMenu() {
 
     int y = 40;
     const int row = 18;
-    const int underlineY = y + 7; // базовая линия подчёркивания
 
-    auto rowColor = [&](NightField f) -> uint16_t {
-        if (_nightField == f) {
-            return _editing ? editColor : navColor;
-        }
+    auto rowColor = [&](NightField f) {
+        if (_nightField == f) return _editing ? editColor : navColor;
         return normColor;
     };
 
-    // ================= MODE =================
+    // MODE
     _tft.setCursor(12, y);
     _tft.setTextColor(rowColor(NightField::MODE), th.bg);
     _tft.print("Mode: ");
 
-    int modeX = _tft.getCursorX();
-
     if (!_editing || _nightField != NightField::MODE || blinkOn) {
         if (_tmpMode == NightService::Mode::AUTO) _tft.print("AUTO");
-        if (_tmpMode == NightService::Mode::ON)   _tft.print("ON  ");
-        if (_tmpMode == NightService::Mode::OFF)  _tft.print("OFF ");
+        if (_tmpMode == NightService::Mode::ON)   _tft.print("ON");
+        if (_tmpMode == NightService::Mode::OFF)  _tft.print("OFF");
     }
 
-    if (_editing && _nightField == NightField::MODE) {
-        int w = 4 * 6; // ширина AUTO/ON/OFF
-        _tft.drawFastHLine(modeX, underlineY, w, editColor);
-    }
-
-    // ================= START =================
+    // START
     y += row;
-    int underlineY2 = y + 7;
-
     _tft.setCursor(12, y);
     _tft.setTextColor(rowColor(NightField::START), th.bg);
     _tft.print("Start: ");
@@ -358,34 +343,20 @@ void SettingsScreen::drawNightMenu() {
     int sh = _tmpStartMin / 60;
     int sm = _tmpStartMin % 60;
 
-    int xHH = _tft.getCursorX();
-
     if (!_editing || _nightField != NightField::START || blinkOn || _timePart != TimePart::HH) {
         if (sh < 10) _tft.print('0');
         _tft.print(sh);
-    } else {
-        _tft.print("  ");
-    }
+    } else _tft.print("  ");
 
     _tft.print(':');
-    int xMM = _tft.getCursorX();
 
     if (!_editing || _nightField != NightField::START || blinkOn || _timePart != TimePart::MM) {
         if (sm < 10) _tft.print('0');
         _tft.print(sm);
-    } else {
-        _tft.print("  ");
-    }
+    } else _tft.print("  ");
 
-    if (_editing && _nightField == NightField::START) {
-        int ux = (_timePart == TimePart::HH) ? xHH : xMM;
-        _tft.drawFastHLine(ux, underlineY2, 12, editColor); // 2 цифры
-    }
-
-    // ================= END =================
+    // END
     y += row;
-    int underlineY3 = y + 7;
-
     _tft.setCursor(12, y);
     _tft.setTextColor(rowColor(NightField::END), th.bg);
     _tft.print("End:   ");
@@ -393,27 +364,88 @@ void SettingsScreen::drawNightMenu() {
     int eh = _tmpEndMin / 60;
     int em = _tmpEndMin % 60;
 
-    xHH = _tft.getCursorX();
-
     if (!_editing || _nightField != NightField::END || blinkOn || _timePart != TimePart::HH) {
         if (eh < 10) _tft.print('0');
         _tft.print(eh);
-    } else {
-        _tft.print("  ");
-    }
+    } else _tft.print("  ");
 
     _tft.print(':');
-    xMM = _tft.getCursorX();
 
     if (!_editing || _nightField != NightField::END || blinkOn || _timePart != TimePart::MM) {
         if (em < 10) _tft.print('0');
         _tft.print(em);
+    } else _tft.print("  ");
+}
+
+// ======================================================
+// Timezone submenu
+// ======================================================
+
+void SettingsScreen::enterTimezoneMenu() {
+    _level = Level::TIMEZONE;
+    _tzEditing = false;
+    _dirty = true;
+}
+
+void SettingsScreen::exitTimezoneMenu(bool apply) {
+    if (apply) {
+        const TzItem& tz = TZ_LIST[_tzIndex];
+        _time.setTimezone(tz.gmtOffset, tz.dstOffset);
+    }
+    _level = Level::ROOT;
+    _tzEditing = false;
+    _dirty = true;
+}
+
+void SettingsScreen::tzEnter() {
+    _tzEditing = !_tzEditing;
+    _dirty = true;
+}
+
+void SettingsScreen::tzExit() {
+    if (_tzEditing) {
+        _tzEditing = false;
+        _dirty = true;
     } else {
-        _tft.print("  ");
+        exitTimezoneMenu(true);
+    }
+}
+
+void SettingsScreen::tzLeft()  { _dirty = true; }
+void SettingsScreen::tzRight() { _dirty = true; }
+
+void SettingsScreen::tzUp() {
+    if (!_tzEditing) return;
+    int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
+    _tzIndex = (_tzIndex + 1) % n;
+}
+
+void SettingsScreen::tzDown() {
+    if (!_tzEditing) return;
+    int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
+    _tzIndex = (_tzIndex + n - 1) % n;
+}
+
+void SettingsScreen::drawTimezoneMenu() {
+    const Theme& th = theme();
+    bool blinkOn = ((_ui.version(UiChannel::SCREEN) / 8) % 2) == 0;
+
+    _tft.setTextSize(2);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.setCursor(20, 8);
+    _tft.print("Timezone");
+
+    _tft.setTextSize(1);
+    _tft.setCursor(20, 48);
+
+    uint16_t color = _tzEditing ? ST77XX_WHITE : th.accent;
+
+    if (!_tzEditing || blinkOn) {
+        _tft.setTextColor(color, th.bg);
+        _tft.print(TZ_LIST[_tzIndex].name);
     }
 
-    if (_editing && _nightField == NightField::END) {
-        int ux = (_timePart == TimePart::HH) ? xHH : xMM;
-        _tft.drawFastHLine(ux, underlineY3, 12, editColor);
+    if (_tzEditing) {
+        _tft.drawFastHLine(20, 56, 80, ST77XX_WHITE);
     }
 }

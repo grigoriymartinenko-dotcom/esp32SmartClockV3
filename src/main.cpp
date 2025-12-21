@@ -156,9 +156,9 @@ SettingsScreen settingsScreen(
     themeService,
     layout,
     nightService,
+    timeService,     // ← ВАЖНО
     uiVersion
 );
-
 // =====================================================
 // SCREEN MANAGER
 // =====================================================
