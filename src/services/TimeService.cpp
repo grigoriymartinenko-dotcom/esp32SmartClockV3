@@ -80,3 +80,9 @@ TimeService::SyncState TimeService::syncState() const {
 TimeService::Source TimeService::source() const {
     return _source;
 }
+
+bool TimeService::getTm(tm& out) const {
+    if (!_valid) return false;
+    out = _timeinfo;
+    return true;
+}

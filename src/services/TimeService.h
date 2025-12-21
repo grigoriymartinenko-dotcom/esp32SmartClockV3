@@ -51,7 +51,8 @@ public:
 
     SyncState syncState() const;
     Source source() const;
-
+// экспорт текущего времени (для RTC)
+    bool getTm(tm& out) const;
 private:
     void updateTime();
     void syncNtp();
