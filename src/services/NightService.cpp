@@ -13,6 +13,8 @@ void NightService::begin() {
 }
 
 void NightService::setMode(Mode m) {
+
+    
     if (_mode == m) return;
 
     _mode = m;

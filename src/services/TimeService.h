@@ -10,6 +10,10 @@
  * Источник времени:
  *  RTC → первичный
  *  NTP → вторичный (апдейт)
+ *
+ * ВАЖНО:
+ *  - После setFromRtc() мы выставляем системное время ESP32 (settimeofday),
+ *    чтобы getLocalTime() работал сразу, без ожидания NTP.
  */
 
 class TimeService {
@@ -51,8 +55,10 @@ public:
 
     SyncState syncState() const;
     Source source() const;
-// экспорт текущего времени (для RTC)
+
+    // экспорт текущего времени (для RTC)
     bool getTm(tm& out) const;
+
 private:
     void updateTime();
     void syncNtp();

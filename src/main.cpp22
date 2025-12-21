@@ -1,0 +1,87 @@
+#include <Arduino.h>
+#include <Wire.h>
+#define EEPROM_ADDR 0x50
+
+uint8_t readByte(uint16_t addr) {
+    Wire.beginTransmission(EEPROM_ADDR);
+    Wire.write(addr >> 8);
+    Wire.write(addr & 0xFF);
+    Wire.endTransmission(false);
+
+    Wire.requestFrom(EEPROM_ADDR, (uint8_t)1);
+    return Wire.available() ? Wire.read() : 0xFF;
+}
+
+void writeByte(uint16_t addr, uint8_t value) {
+    Wire.beginTransmission(EEPROM_ADDR);
+    Wire.write(addr >> 8);
+    Wire.write(addr & 0xFF);
+    Wire.write(value);
+    Wire.endTransmission();
+    delay(5);
+}
+
+void setup() {
+    Serial.begin(115200);
+
+    // ---------- UI versions ----------
+    uiVersion.begin();
+
+    // ---------- Preferences ----------
+    prefs.begin();
+
+    // ---------- Night ----------
+    nightService.begin();
+
+    // восстановление режима из EEPROM
+    NightModePref nm = prefs.nightMode();
+    nightService.setMode(
+        nm == NightModePref::AUTO ? NightService::Mode::AUTO :
+        nm == NightModePref::ON   ? NightService::Mode::ON   :
+                                    NightService::Mode::OFF
+    );
+
+    // ---------- TFT ----------
+    tft.initR(INITR_BLACKTAB);
+    tft.setRotation(1);
+    tft.fillScreen(0x0000);
+
+    // ---------- Buttons ----------
+    pinMode(BTN_LEFT,  INPUT_PULLUP);
+    pinMode(BTN_RIGHT, INPUT_PULLUP);
+    pinMode(BTN_OK,    INPUT_PULLUP);
+    pinMode(BTN_BACK,  INPUT_PULLUP);
+    buttons.begin();
+
+    // ---------- Theme ----------
+    themeService.begin();
+
+    // ---------- RTC ----------
+    rtc.begin();
+
+    tm rtcTime;
+    if (rtc.read(rtcTime)) {
+        timeService.setFromRtc(rtcTime);
+    }
+
+    // ---------- Time (NTP) ----------
+    timeService.setTimezone(2 * 3600, 3600);
+    timeService.begin();
+
+    // ---------- Layout / Sensors ----------
+    layout.begin();
+    dht.begin();
+
+    // ---------- Wi-Fi ----------
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    connectivity.begin();
+
+    // ---------- Forecast ----------
+    forecastService.begin();
+
+    // ---------- UI core ----------
+    screenManager.begin();
+    app.begin();
+}
+
+void loop() {}

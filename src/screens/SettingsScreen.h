@@ -7,6 +7,7 @@
 #include "services/NightService.h"
 #include "services/UiVersionService.h"
 #include "services/TimeService.h"
+#include "services/PreferencesService.h"
 
 /*
  * SettingsScreen
