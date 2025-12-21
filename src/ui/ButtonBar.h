@@ -7,13 +7,10 @@
 /*
  * ButtonBar
  * ---------
- * Нижняя навигационная панель для действий: <- OK -> BACK
- *
- * Правила:
- *  - НЕТ millis()
- *  - НЕТ таймеров
- *  - Только реактивная перерисовка через update()
- *  - Никакой логики кнопок GPIO — только визуализация
+ * ВИЗУАЛЬНАЯ панель кнопок.
+ * ❌ НЕТ GPIO
+ * ❌ НЕТ millis()
+ * ❌ НЕТ логики long-press
  */
 
 class ButtonBar {
@@ -33,26 +30,23 @@ public:
 
     void update();
 
-    // видимость (например, экран включил/выключил)
     void setVisible(bool visible);
-
-    // конфигурация доступных действий
     void setActions(bool left, bool ok, bool right, bool back);
-
-    // подсветка (например, какой action сейчас "выбран")
     void setHighlight(bool left, bool ok, bool right, bool back);
 
-    // мигнуть/подсветить кнопку как "нажато"
+    // кратковременная подсветка "нажатия"
     void flash(ButtonId id);
 
-    // принудительная перерисовка (смена темы/экрана)
     void markDirty();
 
 private:
     void clear();
     void draw();
-
-    void drawCell(int x, int y, int w, int h, const char* label, bool enabled, bool highlight, bool flash);
+    void drawCell(int x, int y, int w, int h,
+                  const char* label,
+                  bool enabled,
+                  bool highlight,
+                  bool flash);
 
     bool anyFlashActive() const;
 
@@ -61,9 +55,9 @@ private:
     ThemeService&    _themeService;
     LayoutService&   _layout;
 
-    bool _visible     = true;
-    bool _wasVisible  = false;
-    bool _dirty       = true;
+    bool _visible    = true;
+    bool _wasVisible = false;
+    bool _dirty      = true;
 
     bool _hasLeft  = true;
     bool _hasOk    = true;
@@ -75,11 +69,10 @@ private:
     bool _hiRight = false;
     bool _hiBack  = false;
 
-    // flash "нажатия" (реактивно, без millis)
     uint8_t _flashLeft  = 0;
     uint8_t _flashOk    = 0;
     uint8_t _flashRight = 0;
     uint8_t _flashBack  = 0;
 
-    static constexpr uint8_t FLASH_FRAMES = 6; // было 2
+    static constexpr uint8_t FLASH_FRAMES = 2;
 };

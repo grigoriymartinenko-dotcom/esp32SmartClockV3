@@ -1,8 +1,8 @@
 #pragma once
 #include <stdint.h>
 
-#include "input/Buttons.h"
 #include "core/ScreenManager.h"
+#include "input/Buttons.h"
 #include "screens/ClockScreen.h"
 #include "screens/ForecastScreen.h"
 #include "screens/SettingsScreen.h"
@@ -10,30 +10,26 @@
 /*
  * AppController
  * -------------
- * Контроллер приложения (НЕ UI).
+ * Маршрутизатор событий ввода на экраны и навигацию.
  *
- * Ответственность:
- *  - знает, какой экран активен
- *  - маршрутизирует кнопки
- *  - выполняет переходы между экранами
- *
- * НЕ делает:
- *  - не рисует
- *  - не знает про темы
- *  - не знает про Wi-Fi / NTP
+ * Правила:
+ *  - ScreenManager переключает экраны
+ *  - SettingsScreen управляет своим меню/подменю
+ *  - LONG OK  = enter submenu (или открыть Settings)
+ *  - LONG BACK= выйти назад/из Settings
  */
 
 class AppController {
 public:
     AppController(
-        ScreenManager& screenManager,
+        ScreenManager& sm,
         ClockScreen& clock,
         ForecastScreen& forecast,
         SettingsScreen& settings
     );
 
     void begin();
-    void handleButtons(const ButtonsState& btn);
+    void handleEvent(const ButtonEvent& e);
 
 private:
     enum class ActiveScreen : uint8_t {
@@ -42,14 +38,13 @@ private:
         SETTINGS
     };
 
-private:
     void goClock();
     void goForecast();
     void goSettings();
 
 private:
-    ScreenManager&  _screenManager;
-    ClockScreen&    _clock;
+    ScreenManager& _sm;
+    ClockScreen& _clock;
     ForecastScreen& _forecast;
     SettingsScreen& _settings;
 

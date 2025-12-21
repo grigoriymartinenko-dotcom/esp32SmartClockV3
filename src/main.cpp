@@ -63,7 +63,8 @@ Buttons buttons(
     BTN_RIGHT,
     BTN_OK,
     BTN_BACK,
-    200
+    50,   // debounce ms
+    800   // long press ms
 );
 
 // =====================================================
@@ -206,7 +207,6 @@ void setup() {
     layout.begin();
     dht.begin();
 
-    // Wi-Fi start
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     connectivity.begin();
 
@@ -228,9 +228,11 @@ void loop() {
     dht.update();
     connectivity.update();
 
-    // ---------- Input ----------
-    ButtonsState btn = buttons.poll();
-    app.handleButtons(btn);
+    // ---------- Input (events) ----------
+    ButtonEvent e;
+    while (buttons.poll(e)) {
+        app.handleEvent(e);
+    }
 
     // ---------- Draw ----------
     screenManager.update();

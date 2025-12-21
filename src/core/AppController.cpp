@@ -1,12 +1,12 @@
 #include "core/AppController.h"
 
 AppController::AppController(
-    ScreenManager& screenManager,
+    ScreenManager& sm,
     ClockScreen& clock,
     ForecastScreen& forecast,
     SettingsScreen& settings
 )
-    : _screenManager(screenManager)
+    : _sm(sm)
     , _clock(clock)
     , _forecast(forecast)
     , _settings(settings)
@@ -14,43 +14,50 @@ AppController::AppController(
 }
 
 void AppController::begin() {
-    _screenManager.set(_clock);
-    _active = ActiveScreen::CLOCK;
+    goClock();
 }
 
-// =====================================================
-// Navigation helpers
-// =====================================================
 void AppController::goClock() {
-    _screenManager.set(_clock);
+    _sm.set(_clock);
     _active = ActiveScreen::CLOCK;
 }
 
 void AppController::goForecast() {
-    _screenManager.set(_forecast);
+    _sm.set(_forecast);
     _active = ActiveScreen::FORECAST;
 }
 
 void AppController::goSettings() {
     _settings.clearExitRequest();
-    _screenManager.set(_settings);
+    _sm.set(_settings);
     _active = ActiveScreen::SETTINGS;
 }
 
-// =====================================================
-// Buttons routing
-// =====================================================
-void AppController::handleButtons(const ButtonsState& btn) {
+void AppController::handleEvent(const ButtonEvent& e) {
 
+    // ==================================================
+    // SETTINGS screen: отдаём управление SettingsScreen
+    // ==================================================
     if (_active == ActiveScreen::SETTINGS) {
 
-        // ===== SETTINGS =====
-        if (btn.left)  _settings.onLeft();
-        if (btn.right) _settings.onRight();
-        if (btn.ok)    _settings.onOk();
-        if (btn.back)  _settings.onBack();
+        if (e.type == ButtonEventType::SHORT_PRESS) {
+            if (e.id == ButtonId::LEFT)  _settings.onLeft();
+            if (e.id == ButtonId::RIGHT) _settings.onRight();
+            if (e.id == ButtonId::OK)    _settings.onOk();
+            if (e.id == ButtonId::BACK)  _settings.onBack();
+        }
 
-        // выход из Settings по флагу
+        // LONG BACK = выход назад/из Settings (классический UX)
+        if (e.type == ButtonEventType::LONG_PRESS && e.id == ButtonId::BACK) {
+            _settings.onBackLong();  // ✅ добавим метод в SettingsScreen
+        }
+
+        // LONG OK = вход в подменю (если применимо)
+        if (e.type == ButtonEventType::LONG_PRESS && e.id == ButtonId::OK) {
+            _settings.onOkLong();    // ✅ добавим метод в SettingsScreen
+        }
+
+        // универсальный выход по флагу
         if (_settings.exitRequested()) {
             _settings.clearExitRequest();
             goClock();
@@ -59,14 +66,21 @@ void AppController::handleButtons(const ButtonsState& btn) {
         return;
     }
 
-    // ===== НЕ SETTINGS =====
-    // LEFT  -> Forecast
-    // RIGHT -> Clock
-    // OK    -> Settings
-    // BACK  -> Clock
+    // ==================================================
+    // НЕ settings: быстрые действия
+    // ==================================================
 
-    if (btn.left)  goForecast();
-    if (btn.right) goClock();
-    if (btn.ok)    goSettings();
-    if (btn.back)  goClock();
+    // LONG OK = вход в Settings (удобно из любого экрана)
+    if (e.type == ButtonEventType::LONG_PRESS && e.id == ButtonId::OK) {
+        goSettings();
+        return;
+    }
+
+    // SHORT PRESS логика как была
+    if (e.type == ButtonEventType::SHORT_PRESS) {
+        if (e.id == ButtonId::LEFT)  goForecast();
+      //  if (e.id == ButtonId::RIGHT) goClock();
+        //if (e.id == ButtonId::OK)    goSettings(); // короткий OK тоже открывает (если хочешь убрать — скажешь)
+        if (e.id == ButtonId::BACK)  goClock();
+    }
 }
