@@ -39,12 +39,23 @@ void ButtonBar::setHighlight(bool left, bool ok, bool right, bool back) {
     _dirty = true;
 }
 
+// =====================================================
+// FLASH — только если не активен
+// =====================================================
 void ButtonBar::flash(ButtonId id) {
     switch (id) {
-        case ButtonId::LEFT:  _flashLeft  = FLASH_FRAMES; break;
-        case ButtonId::OK:    _flashOk    = FLASH_FRAMES; break;
-        case ButtonId::RIGHT: _flashRight = FLASH_FRAMES; break;
-        case ButtonId::BACK:  _flashBack  = FLASH_FRAMES; break;
+        case ButtonId::LEFT:
+            if (_flashLeft == 0) _flashLeft = FLASH_FRAMES;
+            break;
+        case ButtonId::OK:
+            if (_flashOk == 0) _flashOk = FLASH_FRAMES;
+            break;
+        case ButtonId::RIGHT:
+            if (_flashRight == 0) _flashRight = FLASH_FRAMES;
+            break;
+        case ButtonId::BACK:
+            if (_flashBack == 0) _flashBack = FLASH_FRAMES;
+            break;
     }
     _dirty = true;
 }
@@ -66,7 +77,6 @@ void ButtonBar::update() {
         return;
     }
 
-    // если есть flash — перерисовываем каждый кадр, пока не затухнет
     if (anyFlashActive()) {
         _dirty = true;
     }
@@ -76,7 +86,6 @@ void ButtonBar::update() {
         _dirty = false;
         _wasVisible = true;
 
-        // после отрисовки — "сгорает" кадр flash
         if (_flashLeft  > 0) _flashLeft--;
         if (_flashOk    > 0) _flashOk--;
         if (_flashRight > 0) _flashRight--;
@@ -96,10 +105,8 @@ void ButtonBar::draw() {
     const int y = _layout.buttonBarY();
     const int h = _layout.buttonBarH();
 
-    // фон панели
     _tft.fillRect(0, y, _tft.width(), h, th.bg);
 
-    // 4 ячейки
     const int w = _tft.width();
     const int cellW = w / 4;
 
@@ -109,29 +116,27 @@ void ButtonBar::draw() {
     drawCell(3 * cellW, y, w - 3 * cellW, h, "BACK", _hasBack, _hiBack, _flashBack > 0);
 }
 
-void ButtonBar::drawCell(int x, int y, int w, int h, const char* label, bool enabled, bool highlight, bool flash) {
+void ButtonBar::drawCell(int x, int y, int w, int h,
+                         const char* label,
+                         bool enabled,
+                         bool highlight,
+                         bool flash) {
+
     const Theme& th = _themeService.current();
 
-    // фон ячейки
     _tft.fillRect(x, y, w, h, th.bg);
 
-    // цвет текста:
-    // - disabled: muted
-    // - flash: accent (приоритет)
-    // - highlight: accent
-    // - normal: textPrimary
     uint16_t color;
-    if (!enabled) color = th.muted;
-    else if (flash) color = th.accent;
-    else if (highlight) color = th.accent;
-    else color = th.textPrimary;
+    if (!enabled)          color = th.muted;
+    else if (flash)        color = th.accent;        // 🔥 событие
+    else if (highlight)    color = th.textSecondary; // ← спокойная подсветка
+    else                   color = th.textPrimary;
 
     _tft.setFont(nullptr);
     _tft.setTextWrap(false);
     _tft.setTextSize(1);
     _tft.setTextColor(color, th.bg);
 
-    // центрирование текста (упрощённо)
     int len = 0;
     for (const char* p = label; *p; ++p) len++;
 

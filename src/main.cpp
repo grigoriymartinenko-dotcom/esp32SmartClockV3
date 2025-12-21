@@ -7,6 +7,10 @@
 
 // ================= CORE =================
 #include "core/ScreenManager.h"
+#include "core/AppController.h"
+
+// ================= INPUT =================
+#include "input/Buttons.h"
 
 // ================= SERVICES =================
 #include "services/UiVersionService.h"
@@ -15,6 +19,7 @@
 #include "services/NightService.h"
 #include "services/ForecastService.h"
 #include "services/DhtService.h"
+#include "services/ConnectivityService.h"
 
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
@@ -29,16 +34,6 @@
 #include "screens/ForecastScreen.h"
 #include "screens/SettingsScreen.h"
 
-#include <ThreeWire.h>
-#include <RtcDS1302.h>
-
-// ================= RTC (DS1302) =================
-#define RTC_CLK 14
-#define RTC_DAT 27
-#define RTC_RST 26
-
-ThreeWire rtcWire(RTC_DAT, RTC_CLK, RTC_RST);
-RtcDS1302<ThreeWire> rtc(rtcWire);
 // =====================================================
 // TFT
 // =====================================================
@@ -56,47 +51,20 @@ Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 DhtService dht(DHT_PIN, DHT_TYPE);
 
 // =====================================================
-// BUTTONS (4 hardware buttons)
+// BUTTONS
 // =====================================================
-// FIXED ранее: BTN1=GPIO17, BTN2=GPIO16, BTN3=GPIO21, BTN4=GPIO22
 #define BTN_LEFT   17
 #define BTN_RIGHT  16
-#define BTN_OK     21
-#define BTN_BACK   22
+#define BTN_OK     22
+#define BTN_BACK   21
 
-static const uint32_t BTN_DEBOUNCE_MS = 200;
-
-struct DebouncedButton {
-    uint8_t pin = 0;
-    bool last = HIGH;
-    uint32_t lastMs = 0;
-
-    void begin(uint8_t p) {
-        pin = p;
-        pinMode(pin, INPUT_PULLUP);
-        last = digitalRead(pin);
-        lastMs = 0;
-    }
-
-    // true = "нажатие" (фронт HIGH->LOW) с debounce
-    bool pressed(uint32_t nowMs) {
-        bool v = digitalRead(pin);
-
-        bool trig = false;
-        if (last == HIGH && v == LOW && (nowMs - lastMs) > BTN_DEBOUNCE_MS) {
-            trig = true;
-            lastMs = nowMs;
-        }
-
-        last = v;
-        return trig;
-    }
-};
-
-DebouncedButton btnLeft;
-DebouncedButton btnRight;
-DebouncedButton btnOk;
-DebouncedButton btnBack;
+Buttons buttons(
+    BTN_LEFT,
+    BTN_RIGHT,
+    BTN_OK,
+    BTN_BACK,
+    200
+);
 
 // =====================================================
 // Wi-Fi / Weather
@@ -110,7 +78,7 @@ static const char* UNITS = "metric";
 static const char* LANG  = "en";
 
 // =====================================================
-// UI VERSION (v3.2)
+// UI VERSION
 // =====================================================
 UiVersionService uiVersion;
 
@@ -134,7 +102,7 @@ ForecastService forecastService(
 LayoutService layout(tft);
 
 // =====================================================
-// UI
+// UI ELEMENTS
 // =====================================================
 StatusBar statusBar(
     tft,
@@ -147,6 +115,14 @@ BottomBar bottomBar(
     themeService,
     layout,
     dht
+);
+
+// =====================================================
+// CONNECTIVITY
+// =====================================================
+ConnectivityService connectivity(
+    statusBar,
+    timeService
 );
 
 // =====================================================
@@ -177,7 +153,9 @@ ForecastScreen forecastScreen(
 SettingsScreen settingsScreen(
     tft,
     themeService,
-    layout
+    layout,
+    nightService,
+    uiVersion
 );
 
 // =====================================================
@@ -191,34 +169,18 @@ ScreenManager screenManager(
     layout,
     sepStatus,
     sepBottom,
-    uiVersion   // 👈 ВАЖНО
+    uiVersion
 );
+
 // =====================================================
-// ACTIVE SCREEN (local state for routing buttons)
+// APP CONTROLLER
 // =====================================================
-enum class ActiveScreen : uint8_t {
-    CLOCK = 0,
-    FORECAST,
-    SETTINGS
-};
-
-static ActiveScreen active = ActiveScreen::CLOCK;
-
-static void goClock() {
-    screenManager.set(clockScreen);
-    active = ActiveScreen::CLOCK;
-}
-
-static void goForecast() {
-    screenManager.set(forecastScreen);
-    active = ActiveScreen::FORECAST;
-}
-
-static void goSettings() {
-    settingsScreen.clearExitRequest();
-    screenManager.set(settingsScreen);
-    active = ActiveScreen::SETTINGS;
-}
+AppController app(
+    screenManager,
+    clockScreen,
+    forecastScreen,
+    settingsScreen
+);
 
 // =====================================================
 // SETUP
@@ -226,63 +188,32 @@ static void goSettings() {
 void setup() {
     Serial.begin(115200);
 
-    // ---------- UI Versions ----------
     uiVersion.begin();
 
-    // ---------- TFT ----------
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
     tft.fillScreen(0x0000);
 
-    // ---------- Buttons ----------
-    btnLeft.begin(BTN_LEFT);
-    btnRight.begin(BTN_RIGHT);
-    btnOk.begin(BTN_OK);
-    btnBack.begin(BTN_BACK);
+    buttons.begin();
 
-    // ---------- Theme ----------
     themeService.begin();
 
-    // ---------- Time ----------
-    timeService.setTimezone(2 * 3600, 3600); // Украина
+    timeService.setTimezone(2 * 3600, 3600);
     timeService.begin();
 
-    // ---------- Layout ----------
-    layout.begin();
+    nightService.begin();
 
-    // ---------- DHT ----------
+    layout.begin();
     dht.begin();
 
-    // ---------- RTC ----------
-rtc.Begin();
-
-if (rtc.IsDateTimeValid()) {
-    RtcDateTime now = rtc.GetDateTime();
-
-    tm t{};
-    t.tm_year = now.Year() - 1900;
-    t.tm_mon  = now.Month() - 1;
-    t.tm_mday = now.Day();
-    t.tm_hour = now.Hour();
-    t.tm_min  = now.Minute();
-    t.tm_sec  = now.Second();
-
-    timeService.setFromRtc(t);
-}
-    // ---------- Wi-Fi ----------
-    statusBar.setWiFiStatus(StatusBar::CONNECTING);
+    // Wi-Fi start
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(300);
-    }
-    statusBar.setWiFiStatus(StatusBar::ONLINE);
+    connectivity.begin();
 
-    // ---------- Forecast ----------
     forecastService.begin();
 
-    // ---------- Screens ----------
     screenManager.begin();
-    active = ActiveScreen::CLOCK;
+    app.begin();
 }
 
 // =====================================================
@@ -295,90 +226,13 @@ void loop() {
     nightService.update(timeService);
     forecastService.update();
     dht.update();
+    connectivity.update();
 
-    // ==================================================
-    // NTP → StatusBar (FIXED LOGIC)
-    // ==================================================
-    static TimeService::SyncState lastNtpState = TimeService::NOT_STARTED;
-    static bool ntpEverSynced = false;
+    // ---------- Input ----------
+    ButtonsState btn = buttons.poll();
+    app.handleButtons(btn);
 
-    TimeService::SyncState st = timeService.syncState();
-
-    if (st != lastNtpState) {
-
-        if (st == TimeService::SYNCED) {
-            ntpEverSynced = true;
-            statusBar.setNtpStatus(StatusBar::ONLINE);
-        }
-        else if (st == TimeService::SYNCING) {
-            statusBar.setNtpStatus(StatusBar::CONNECTING);
-        }
-        else if (st == TimeService::ERROR) {
-            statusBar.setNtpStatus(StatusBar::ERROR);
-        }
-        else {
-            statusBar.setNtpStatus(
-                ntpEverSynced ? StatusBar::ONLINE
-                              : StatusBar::OFFLINE
-            );
-        }
-
-        lastNtpState = st;
-    }
-
-    // ==================================================
-    // Buttons routing
-    // ==================================================
-    uint32_t now = millis();
-// ===== DEBUG BUTTONS (TEMP) =====
-static uint32_t lastPrint = 0;
-if (now - lastPrint > 300) {
-    lastPrint = now;
-/*
-    Serial.printf(
-        "[BTN raw] L=%d R=%d OK=%d BACK=%d\n",
-        digitalRead(BTN_LEFT),
-        digitalRead(BTN_RIGHT),
-        digitalRead(BTN_OK),
-        digitalRead(BTN_BACK)
-    );
-    */
-}
-    const bool pLeft  = btnLeft.pressed(now);
-    const bool pRight = btnRight.pressed(now);
-    const bool pOk    = btnOk.pressed(now);
-    const bool pBack  = btnBack.pressed(now);
-if (pLeft)  Serial.println("[BTN] LEFT pressed");
-if (pRight) Serial.println("[BTN] RIGHT pressed");
-if (pOk)    Serial.println("[BTN] OK pressed");
-if (pBack)  Serial.println("[BTN] BACK pressed");
-    if (active == ActiveScreen::SETTINGS) {
-        // SETTINGS: навигация внутри экрана
-        if (pLeft)  settingsScreen.onLeft();
-        if (pRight) settingsScreen.onRight();
-        if (pOk)    settingsScreen.onOk();
-        if (pBack)  settingsScreen.onBack();
-
-        // выход по флагу (BACK)
-        if (settingsScreen.exitRequested()) {
-            settingsScreen.clearExitRequest();
-            goClock();
-        }
-    } else {
-        // НЕ settings: быстрые действия
-        // LEFT  -> Forecast
-        // RIGHT -> Clock
-        // OK    -> Settings
-        // BACK  -> Clock (на всякий)
-        if (pLeft)  goForecast();
-        if (pRight) goClock();
-        if (pOk)    goSettings();
-        if (pBack)  goClock();
-    }
-
-    // ==================================================
-    // Draw order
-    // ==================================================
+    // ---------- Draw ----------
     screenManager.update();
 
     if (screenManager.currentHasStatusBar()) {
