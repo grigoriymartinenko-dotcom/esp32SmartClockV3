@@ -8,18 +8,10 @@
 #include "services/UiVersionService.h"
 
 /*
- * SettingsScreen (step: navigation skeleton)
- * -----------------------------------------
- * Сейчас:
- *  - корневое меню (список)
- *  - flash кнопок
- *
- * Добавили:
- *  - onOkLong()  : вход в подменю (заготовка)
- *  - onBackLong(): выход назад/из экрана (классический UX)
- *
- * Следующий шаг:
- *  - реальные подменю Night Mode / Timezone
+ * SettingsScreen
+ * --------------
+ * Root Settings + Night Mode submenu
+ * 4 hardware buttons UX
  */
 
 class SettingsScreen : public Screen {
@@ -32,6 +24,7 @@ public:
         UiVersionService& uiVersion
     );
 
+    // ===== Screen =====
     void begin() override;
     void update() override;
 
@@ -40,36 +33,78 @@ public:
 
     void onThemeChanged() override;
 
-    // short press
+    // ===== Buttons (used by AppController) =====
     void onLeft();
     void onRight();
     void onOk();
     void onBack();
 
-    // long press
     void onOkLong();
     void onBackLong();
 
+    // ===== Exit handling =====
     bool exitRequested() const;
     void clearExitRequest();
 
 private:
+    // ===== Internal levels =====
+    enum class Level : uint8_t {
+        ROOT,
+        NIGHT_MODE
+    };
+
+    enum class NightField : uint8_t {
+        MODE = 0,
+        START,
+        END
+    };
+
+    enum class TimePart : uint8_t {
+        HH,
+        MM
+    };
+
+private:
+    // ===== Draw =====
     void redrawAll();
     void drawTitle();
     void drawList();
+    void drawNightMenu();
+
+    // ===== Night submenu logic =====
+    void enterNightMenu();
+    void exitNightMenu(bool apply);
+
+    void nightLeft();
+    void nightRight();
+    void nightUp();
+    void nightDown();
+    void nightEnter();   // LONG OK
+    void nightExit();    // LONG BACK
 
 private:
-    Adafruit_ST7735& _tft;
-    LayoutService&   _layout;
-    ButtonBar _bar;
-
-    NightService& _night;
+    Adafruit_ST7735&  _tft;
+    LayoutService&    _layout;
+    ButtonBar         _bar;
+    NightService&     _night;
     UiVersionService& _ui;
 
     bool _dirty = true;
-    int  _selected = 0;
-
     bool _exitRequested = false;
 
-    static constexpr int ITEM_COUNT = 6; // расширили на "пустышки"
+    // ===== Root menu =====
+    static constexpr int ITEM_COUNT = 6;
+    int _selected = 0;
+
+    // ===== Submenu state =====
+    Level _level = Level::ROOT;
+
+    NightField _nightField = NightField::MODE;
+    TimePart   _timePart   = TimePart::HH;
+    bool       _editing    = false;
+
+    // temp editable values
+    NightService::Mode _tmpMode;
+    int _tmpStartMin = 0;
+    int _tmpEndMin   = 0;
 };
