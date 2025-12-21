@@ -1,21 +1,18 @@
 #include "screens/SettingsScreen.h"
-#include "services/PreferencesService.h"
 
 // ============================================================================
-// ВАЖНО:
-// PreferencesService создан в main.cpp как глобальный объект:
-//     PreferencesService prefs;
-// Здесь мы просто используем его через extern.
+// PreferencesService — глобальный объект, созданный в main.cpp
+// Мы используем его тут только для сохранения настроек.
 // ============================================================================
 extern PreferencesService prefs;
 
 // ============================================================================
 // ВАЖНО ДЛЯ C++:
-// В SettingsScreen.h TZ_LIST объявлен как static constexpr массив.
-// Чтобы линкер/компилятор были счастливы, нужно ОДНО внешнее определение.
-// Это оно:
+// static constexpr массивы, объявленные в .h, должны иметь ОДНО определение в .cpp
+// (иначе возможны проблемы линковки в некоторых режимах компиляции).
 // ============================================================================
-constexpr SettingsScreen::TzItem SettingsScreen::TZ_LIST[];
+constexpr SettingsScreen::MenuItem SettingsScreen::MENU[];
+constexpr SettingsScreen::TzItem   SettingsScreen::TZ_LIST[];
 
 // ============================================================================
 // ctor
@@ -39,53 +36,40 @@ SettingsScreen::SettingsScreen(
 }
 
 // ============================================================================
-// begin(): вызывается при заходе на экран Settings
+// begin(): вызывается при входе на экран Settings
 // ============================================================================
 void SettingsScreen::begin() {
     _exitRequested = false;
-    _level = Level::ROOT;
 
-    // ButtonBar (нижняя панель подсказок/индикации кнопок)
+    _level = Level::ROOT;
+    _mode  = UiMode::NAV;
+
+    // Стартовое выделение оставляем как есть (не сбрасываем _selected),
+    // чтобы UX был приятнее: вернулся в Settings — курсор там же.
+    _dirty = true;
+
+    // Визуальная панель кнопок (не GPIO)
     _bar.setVisible(true);
     _bar.setActions(true, true, true, true);
-    _bar.setHighlight(false, false, false, false);
-
-    _dirty = true;
-    redrawAll();
+    _bar.markDirty();
 }
 
 // ============================================================================
-// update(): вызывается каждый loop() когда SettingsScreen активен
+// update(): вызывается каждый loop() когда экран активен
 // ============================================================================
 void SettingsScreen::update() {
-    // каждый кадр сбрасываем подсветки кнопок,
-    // flash() потом кратко включает её
-    _bar.setHighlight(false, false, false, false);
-
-    // Моргание/перерисовка в режимах редактирования
-    // (мы просто "пинаем" UiChannel::SCREEN)
-    if (_level == Level::NIGHT_MODE && _editing) {
-        _ui.bump(UiChannel::SCREEN);
-        drawNightMenu();
-    }
-
-    if (_level == Level::TIMEZONE && _tzEditing) {
-        _ui.bump(UiChannel::SCREEN);
-        drawTimezoneMenu();
-    }
-
-    // Полная перерисовка экрана по флагу
+    // Если что-то изменилось — перерисуем
     if (_dirty) {
         redrawAll();
         _dirty = false;
     }
 
-    // Обновляем нижнюю панель
+    // Bottom визуальная панель
     _bar.update();
 }
 
 // ============================================================================
-// Когда тема изменилась — перерисуем
+// Смена темы -> перерисовать
 // ============================================================================
 void SettingsScreen::onThemeChanged() {
     _bar.markDirty();
@@ -93,83 +77,118 @@ void SettingsScreen::onThemeChanged() {
 }
 
 // ============================================================================
-// Кнопки: логика роутинга по текущему уровню (ROOT / NIGHT_MODE / TIMEZONE)
+// ============================ BUTTONS (UX) ==================================
 // ============================================================================
-void SettingsScreen::onLeft() {
-    _bar.flash(ButtonBar::ButtonId::LEFT);
+//
+// Контракт (как мы зафиксировали):
+//
+// ROOT:
+//   SHORT LEFT/RIGHT -> выбор пункта
+//   LONG  OK         -> вход в подменю
+//   LONG  BACK       -> выход из Settings (exitRequested)
+//
+// SUBMENU (Night / Timezone):
+//   NAV:
+//     SHORT LEFT/RIGHT -> выбор поля (Night) / (Timezone: поле одно -> ничего)
+//     LONG  OK         -> enter EDIT
+//     LONG  BACK       -> exit submenu (APPLY)
+//
+//   EDIT:
+//     Night Start/End:
+//       SHORT LEFT/RIGHT -> HH / MM
+//       SHORT OK         -> + (inc)
+//       SHORT BACK       -> - (dec)
+//       LONG  OK         -> exit EDIT (APPLY edit)
+//       LONG  BACK       -> cancel EDIT (ROLLBACK)
+//     Night Mode:
+//       SHORT OK/BACK    -> циклим AUTO/ON/OFF (+/-)
+//       SHORT LEFT/RIGHT -> ничего (HH/MM не нужно)
+//     Timezone:
+//       SHORT OK         -> следующий
+//       SHORT BACK       -> предыдущий
+//       SHORT LEFT/RIGHT -> ничего (HH/MM нет)
+//       LONG  OK         -> exit EDIT (APPLY edit)
+//       LONG  BACK       -> cancel EDIT (ROLLBACK)
+// ----------------------------------------------------------------------------
 
-    if (_level == Level::ROOT) {
-        _selected = (_selected + ITEM_COUNT - 1) % ITEM_COUNT;
-        _dirty = true;
-    } else if (_level == Level::NIGHT_MODE) {
-        nightLeft();
-    } else { // TIMEZONE
-        tzLeft();
+void SettingsScreen::onShortLeft() {
+    if (_mode == UiMode::NAV) {
+        navLeft();
+        return;
     }
-}
 
-void SettingsScreen::onRight() {
-    _bar.flash(ButtonBar::ButtonId::RIGHT);
-
-    if (_level == Level::ROOT) {
-        _selected = (_selected + 1) % ITEM_COUNT;
-        _dirty = true;
-    } else if (_level == Level::NIGHT_MODE) {
-        nightRight();
-    } else { // TIMEZONE
-        tzRight();
+    // EDIT
+    if (_level == Level::NIGHT) {
+        // В EDIT для времени: LEFT выбирает HH (только если редактируем Start/End)
+        if (_nightField == NightField::START || _nightField == NightField::END) {
+            _timePart = TimePart::HH;
+            _dirty = true;
+        }
+        return;
     }
+
+    // TIMEZONE: в EDIT LEFT не нужен (там нет HH/MM)
 }
 
-void SettingsScreen::onOk() {
-    _bar.flash(ButtonBar::ButtonId::OK);
-
-    // В подменю OK/Back двигают значения вверх/вниз
-    if (_level == Level::NIGHT_MODE) nightUp();
-    if (_level == Level::TIMEZONE)   tzUp();
-}
-
-void SettingsScreen::onBack() {
-    _bar.flash(ButtonBar::ButtonId::BACK);
-
-    if (_level == Level::NIGHT_MODE) nightDown();
-    if (_level == Level::TIMEZONE)   tzDown();
-}
-
-void SettingsScreen::onOkLong() {
-    _bar.flash(ButtonBar::ButtonId::OK);
-
-    // LONG OK:
-    // - в ROOT: вход в подменю (timezone/night)
-    // - в NIGHT_MODE: toggle edit mode
-    // - в TIMEZONE: toggle edit mode
-    if (_level == Level::ROOT) {
-        if (_selected == 1) enterTimezoneMenu();
-        if (_selected == 2) enterNightMenu();
-    } else if (_level == Level::NIGHT_MODE) {
-        nightEnter();
-    } else { // TIMEZONE
-        tzEnter();
+void SettingsScreen::onShortRight() {
+    if (_mode == UiMode::NAV) {
+        navRight();
+        return;
     }
+
+    // EDIT
+    if (_level == Level::NIGHT) {
+        // В EDIT для времени: RIGHT выбирает MM (только если редактируем Start/End)
+        if (_nightField == NightField::START || _nightField == NightField::END) {
+            _timePart = TimePart::MM;
+            _dirty = true;
+        }
+        return;
+    }
+
+    // TIMEZONE: в EDIT RIGHT не нужен
 }
 
-void SettingsScreen::onBackLong() {
-    _bar.flash(ButtonBar::ButtonId::BACK);
+void SettingsScreen::onShortOk() {
+    if (_mode != UiMode::EDIT) return;
+    editInc(); // + (или "следующий" для timezone)
+}
 
-    // LONG BACK:
-    // - в ROOT: выход из SettingsScreen (флаг)
-    // - в подменю: назад (с apply)
+void SettingsScreen::onShortBack() {
+    if (_mode != UiMode::EDIT) return;
+    editDec(); // - (или "предыдущий" для timezone)
+}
+
+void SettingsScreen::onLongOk() {
+    // ROOT -> вход в пункт меню
+    if (_level == Level::ROOT) {
+        enterSubmenu(MENU[_selected].target);
+        return;
+    }
+
+    // SUBMENU:
+    // NAV -> enter EDIT
+    // EDIT -> apply edit и выйти в NAV
+    if (_mode == UiMode::NAV) enterEdit();
+    else                      exitEdit(true);
+}
+
+void SettingsScreen::onLongBack() {
+    // ROOT -> выйти из Settings
     if (_level == Level::ROOT) {
         _exitRequested = true;
-    } else if (_level == Level::NIGHT_MODE) {
-        nightExit();
-    } else { // TIMEZONE
-        tzExit();
+        return;
     }
+
+    // SUBMENU:
+    // EDIT -> cancel edit
+    // NAV  -> выйти из submenu (APPLY settings)
+    if (_mode == UiMode::EDIT) exitEdit(false);
+    else                       exitSubmenu(true);
 }
 
 // ============================================================================
-// Exit flags (для AppController)
+// Exit flags
 // ============================================================================
 bool SettingsScreen::exitRequested() const {
     return _exitRequested;
@@ -180,199 +199,307 @@ void SettingsScreen::clearExitRequest() {
 }
 
 // ============================================================================
-// Draw root dispatcher
+// ============================ NAV / EDIT CORE ===============================
 // ============================================================================
-void SettingsScreen::redrawAll() {
-    const Theme& th = theme();
-    _tft.fillScreen(th.bg);
 
+void SettingsScreen::navLeft() {
     if (_level == Level::ROOT) {
-        drawTitle();
-        drawList();
-    } else if (_level == Level::NIGHT_MODE) {
-        drawNightMenu();
-    } else { // TIMEZONE
-        drawTimezoneMenu();
+        const int n = sizeof(MENU) / sizeof(MENU[0]);
+        _selected = (_selected + n - 1) % n;
+        _dirty = true;
+        return;
     }
 
-    _bar.markDirty();
-}
-
-void SettingsScreen::drawTitle() {
-    const Theme& th = theme();
-    _tft.setTextSize(2);
-    _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(20, 8);
-    _tft.print("SETTINGS");
-}
-
-void SettingsScreen::drawList() {
-    const Theme& th = theme();
-
-    const int top = 36;
-    const int bottom = _layout.buttonBarY();
-    const int rowH = (bottom - top) / ITEM_COUNT;
-
-    for (int i = 0; i < ITEM_COUNT; i++) {
-        int y = top + i * rowH;
-        uint16_t color = (i == _selected) ? th.accent : th.textPrimary;
-
-        _tft.setTextSize(1);
-        _tft.setTextColor(color, th.bg);
-        _tft.setCursor(12, y + 4);
-
-        if (i == 0) _tft.print("Wi-Fi");
-        if (i == 1) _tft.print("Timezone");
-        if (i == 2) _tft.print("Night mode");
-        if (i == 3) _tft.print("Future 1");
-        if (i == 4) _tft.print("Future 2");
-        if (i == 5) _tft.print("About");
+    if (_level == Level::NIGHT) {
+        // LEFT/RIGHT в NAV выбирают поле MODE/START/END
+        _nightField = (_nightField == NightField::MODE)
+            ? NightField::END
+            : (NightField)((int)_nightField - 1);
+        _dirty = true;
+        return;
     }
+
+    // TIMEZONE: в NAV поле одно — нечего выбирать (UX предсказуемый)
 }
 
-// ============================================================================
-// NIGHT MENU
-// ============================================================================
+void SettingsScreen::navRight() {
+    if (_level == Level::ROOT) {
+        const int n = sizeof(MENU) / sizeof(MENU[0]);
+        _selected = (_selected + 1) % n;
+        _dirty = true;
+        return;
+    }
 
-void SettingsScreen::enterNightMenu() {
-    _level = Level::NIGHT_MODE;
-    _editing = false;
-    _nightField = NightField::MODE;
-    _timePart = TimePart::HH;
+    if (_level == Level::NIGHT) {
+        _nightField = (_nightField == NightField::END)
+            ? NightField::MODE
+            : (NightField)((int)_nightField + 1);
+        _dirty = true;
+        return;
+    }
 
-    // Берём текущие значения сервиса как стартовые для редактирования
-    _tmpMode = _night.mode();
-    _tmpStartMin = _night.autoStart();
-    _tmpEndMin   = _night.autoEnd();
+    // TIMEZONE: в NAV поле одно — ничего не делаем
+}
+
+void SettingsScreen::enterSubmenu(Level lvl) {
+    // Плейсхолдеры пока не открываем
+    if (lvl == Level::ROOT) return;
+
+    _level = lvl;
+    _mode  = UiMode::NAV;
+
+    if (lvl == Level::NIGHT) {
+        // Берём текущие значения как старт
+        _tmpMode = _night.mode();
+        _tmpStartMin = _night.autoStart();
+        _tmpEndMin   = _night.autoEnd();
+
+        // И сохраняем бэкап для CANCEL EDIT
+        _bakMode = _tmpMode;
+        _bakStartMin = _tmpStartMin;
+        _bakEndMin   = _tmpEndMin;
+
+        _nightField = NightField::MODE;
+        _timePart = TimePart::HH;
+    }
+
+    if (lvl == Level::TIMEZONE) {
+        // При входе выставим tzIndex по сохранённым prefs,
+        // чтобы пользователь видел актуальный выбор.
+        long savedGmt = (long)prefs.tzGmtOffset();
+        int  savedDst = (int)prefs.tzDstOffset();
+
+        int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
+        int found = 0;
+        for (int i = 0; i < n; i++) {
+            if (TZ_LIST[i].gmtOffset == savedGmt && TZ_LIST[i].dstOffset == savedDst) {
+                _tzIndex = i;
+                found = 1;
+                break;
+            }
+        }
+        if (!found) _tzIndex = 0;
+
+        // Бэкап для CANCEL EDIT
+        _bakTzIndex = _tzIndex;
+    }
 
     _dirty = true;
 }
 
-void SettingsScreen::exitNightMenu(bool apply) {
-    if (apply) {
-        // Применяем в NightService
+void SettingsScreen::exitSubmenu(bool apply) {
+    // apply=true — применяем и сохраняем то, что сейчас в _tmp / _tzIndex
+
+    if (_level == Level::NIGHT && apply) {
+        // Применяем в сервис
         _night.setMode(_tmpMode);
         _night.setAutoRange(_tmpStartMin, _tmpEndMin);
 
         // Сохраняем в EEPROM
         prefs.setNightMode(
             _tmpMode == NightService::Mode::AUTO ? NightModePref::AUTO :
-            _tmpMode == NightService::Mode::ON   ? NightModePref::ON   :
+            _tmpMode == NightService::Mode::ON   ? NightModePref::ON :
                                                    NightModePref::OFF
         );
-        prefs.setNightRange(_tmpStartMin, _tmpEndMin);
+        prefs.setNightRange((uint16_t)_tmpStartMin, (uint16_t)_tmpEndMin);
         prefs.save();
     }
 
+    if (_level == Level::TIMEZONE && apply) {
+        const TzItem& tz = TZ_LIST[_tzIndex];
+
+        // Сохраняем и применяем
+        prefs.setTimezone((int32_t)tz.gmtOffset, (int32_t)tz.dstOffset);
+        prefs.save();
+
+        _time.setTimezone(tz.gmtOffset, tz.dstOffset);
+    }
+
+    // Возврат в ROOT
     _level = Level::ROOT;
-    _editing = false;
+    _mode  = UiMode::NAV;
     _dirty = true;
 }
 
-void SettingsScreen::nightEnter() {
-    // Включаем/выключаем режим редактирования
-    _editing = !_editing;
-    if (_editing) _timePart = TimePart::HH;
+void SettingsScreen::enterEdit() {
+    _mode = UiMode::EDIT;
+
+    // В Night, если вошли в EDIT на Start/End — начнём с HH
+    if (_level == Level::NIGHT) {
+        if (_nightField == NightField::START || _nightField == NightField::END) {
+            _timePart = TimePart::HH;
+        }
+    }
+
+    // Для Timezone — просто EDIT режим
     _dirty = true;
 }
 
-void SettingsScreen::nightExit() {
-    // Если редактировали — просто выходим из edit.
-    // Если не редактировали — выходим из меню и применяем.
-    if (_editing) {
-        _editing = false;
-        _dirty = true;
+void SettingsScreen::exitEdit(bool apply) {
+    // apply=false -> rollback только "внутреннего редактирования",
+    // не выход из submenu. (выход из submenu — отдельная кнопка LONG BACK в NAV)
+
+    if (!apply) {
+        if (_level == Level::NIGHT) {
+            _tmpMode     = _bakMode;
+            _tmpStartMin = _bakStartMin;
+            _tmpEndMin   = _bakEndMin;
+        }
+        if (_level == Level::TIMEZONE) {
+            _tzIndex = _bakTzIndex;
+        }
     } else {
-        exitNightMenu(true);
+        // apply=true: фиксируем текущие значения как "новая база" для возможного CANCEL дальше
+        if (_level == Level::NIGHT) {
+            _bakMode     = _tmpMode;
+            _bakStartMin = _tmpStartMin;
+            _bakEndMin   = _tmpEndMin;
+        }
+        if (_level == Level::TIMEZONE) {
+            _bakTzIndex = _tzIndex;
+        }
     }
-}
 
-void SettingsScreen::nightLeft() {
-    // Навигация по полям MODE/START/END
-    // Если editing времени — left делает HH активным
-    if (_editing && _nightField != NightField::MODE) {
-        _timePart = TimePart::HH;
-    } else if (!_editing) {
-        _nightField = (_nightField == NightField::MODE)
-            ? NightField::END
-            : (NightField)((int)_nightField - 1);
-    }
+    _mode = UiMode::NAV;
     _dirty = true;
 }
 
-void SettingsScreen::nightRight() {
-    // Аналогично right: если editing времени — MM активным
-    if (_editing && _nightField != NightField::MODE) {
-        _timePart = TimePart::MM;
-    } else if (!_editing) {
-        _nightField = (_nightField == NightField::END)
-            ? NightField::MODE
-            : (NightField)((int)_nightField + 1);
-    }
-    _dirty = true;
-}
+void SettingsScreen::editInc() {
+    // NIGHT
+    if (_level == Level::NIGHT) {
+        if (_nightField == NightField::MODE) {
+            // + циклим режим
+            _tmpMode = (NightService::Mode)(((int)_tmpMode + 1) % 3);
+            _dirty = true;
+            return;
+        }
 
-void SettingsScreen::nightUp() {
-    if (!_editing) return;
+        // START/END: + увеличиваем HH или MM
+        int* v = (_nightField == NightField::START) ? &_tmpStartMin : &_tmpEndMin;
+        int hh = (*v) / 60;
+        int mm = (*v) % 60;
 
-    if (_nightField == NightField::MODE) {
-        // AUTO -> ON -> OFF
-        _tmpMode = (NightService::Mode)(((int)_tmpMode + 1) % 3);
+        if (_timePart == TimePart::HH) hh = (hh + 1) % 24;
+        else                           mm = (mm + 1) % 60;
+
+        *v = hh * 60 + mm;
+        _dirty = true;
         return;
     }
 
-    // START/END: редактируем часы/минуты
-    int* v = (_nightField == NightField::START) ? &_tmpStartMin : &_tmpEndMin;
-    int hh = *v / 60;
-    int mm = *v % 60;
-
-    if (_timePart == TimePart::HH) hh = (hh + 1) % 24;
-    else mm = (mm + 1) % 60;
-
-    *v = hh * 60 + mm;
+    // TIMEZONE
+    if (_level == Level::TIMEZONE) {
+        int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
+        _tzIndex = (_tzIndex + 1) % n;
+        _dirty = true;
+        return;
+    }
 }
 
-void SettingsScreen::nightDown() {
-    if (!_editing) return;
+void SettingsScreen::editDec() {
+    // NIGHT
+    if (_level == Level::NIGHT) {
+        if (_nightField == NightField::MODE) {
+            // - циклим режим назад
+            int m = (int)_tmpMode - 1;
+            if (m < 0) m = 2;
+            _tmpMode = (NightService::Mode)m;
+            _dirty = true;
+            return;
+        }
 
-    if (_nightField == NightField::MODE) {
-        int m = (int)_tmpMode - 1;
-        if (m < 0) m = 2;
-        _tmpMode = (NightService::Mode)m;
+        // START/END: - уменьшаем HH или MM
+        int* v = (_nightField == NightField::START) ? &_tmpStartMin : &_tmpEndMin;
+        int hh = (*v) / 60;
+        int mm = (*v) % 60;
+
+        if (_timePart == TimePart::HH) hh = (hh + 23) % 24;
+        else                           mm = (mm + 59) % 60;
+
+        *v = hh * 60 + mm;
+        _dirty = true;
         return;
     }
 
-    int* v = (_nightField == NightField::START) ? &_tmpStartMin : &_tmpEndMin;
-    int hh = *v / 60;
-    int mm = *v % 60;
-
-    if (_timePart == TimePart::HH) hh = (hh + 23) % 24;
-    else mm = (mm + 59) % 60;
-
-    *v = hh * 60 + mm;
+    // TIMEZONE
+    if (_level == Level::TIMEZONE) {
+        int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
+        _tzIndex = (_tzIndex + n - 1) % n;
+        _dirty = true;
+        return;
+    }
 }
 
-void SettingsScreen::drawNightMenu() {
+// ============================================================================
+// =============================== DRAW =======================================
+// ============================================================================
+
+void SettingsScreen::redrawAll() {
     const Theme& th = theme();
 
+    _tft.fillScreen(th.bg);
+
+    if (_level == Level::ROOT) {
+        drawRoot();
+    } else if (_level == Level::NIGHT) {
+        drawNight();
+    } else {
+        drawTimezone();
+    }
+
+    // Принудительно перерисуем bar (чтобы тема/режим не оставляли мусор)
+    _bar.markDirty();
+}
+
+void SettingsScreen::drawRoot() {
+    const Theme& th = theme();
+
+    // ---- Title
     _tft.setTextSize(2);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.setCursor(20, 8);
+    _tft.print("SETTINGS");
+
+    // ---- List
+    _tft.setTextSize(1);
+
+    const int top = 36;
+    const int bottom = _layout.buttonBarY();
+    const int count = sizeof(MENU) / sizeof(MENU[0]);
+    const int rowH = (bottom - top) / count;
+
+    for (int i = 0; i < count; i++) {
+        uint16_t color = (i == _selected) ? th.accent : th.textPrimary;
+        _tft.setTextColor(color, th.bg);
+        _tft.setCursor(12, top + i * rowH + 4);
+        _tft.print(MENU[i].label);
+    }
+}
+
+void SettingsScreen::drawNight() {
+    const Theme& th = theme();
+
+    // ---- Title
+    _tft.setTextSize(2);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.setCursor(12, 8);
     _tft.print("Night Mode");
 
     _tft.setTextSize(1);
 
-    int y = 40;
-    const int row = 18;
-
-    // Цвет строки: если выделено поле — accent,
-    // если editing — белым
+    // Визуальная подсветка:
+    // - выбранное поле в NAV: accent
+    // - выбранное поле в EDIT: white
     auto rowColor = [&](NightField f) -> uint16_t {
-        if (_nightField == f) return _editing ? ST77XX_WHITE : th.accent;
-        return th.textPrimary;
+        if (_nightField != f) return th.textPrimary;
+        return (_mode == UiMode::EDIT) ? ST77XX_WHITE : th.accent;
     };
 
-    _tft.setCursor(12, y);
+    const int y0 = 40;
+    const int row = 18;
+
+    // Row 1: MODE
+    _tft.setCursor(12, y0);
     _tft.setTextColor(rowColor(NightField::MODE), th.bg);
     _tft.print("Mode: ");
     _tft.print(
@@ -380,113 +507,60 @@ void SettingsScreen::drawNightMenu() {
         _tmpMode == NightService::Mode::ON   ? "ON"   : "OFF"
     );
 
-    y += row;
-    _tft.setCursor(12, y);
+    // Row 2: START
+    _tft.setCursor(12, y0 + row);
     _tft.setTextColor(rowColor(NightField::START), th.bg);
     _tft.printf("Start: %02d:%02d", _tmpStartMin / 60, _tmpStartMin % 60);
 
-    y += row;
-    _tft.setCursor(12, y);
+    // Row 3: END
+    _tft.setCursor(12, y0 + 2 * row);
     _tft.setTextColor(rowColor(NightField::END), th.bg);
     _tft.printf("End:   %02d:%02d", _tmpEndMin / 60, _tmpEndMin % 60);
-}
 
-// ============================================================================
-// TIMEZONE MENU
-// ============================================================================
+    // Доп. подсказка для EDIT времени: подчёркиваем HH/MM
+    // Это помогает "не потеряться".
+    if (_mode == UiMode::EDIT && (_nightField == NightField::START || _nightField == NightField::END)) {
 
-void SettingsScreen::enterTimezoneMenu() {
-    _level = Level::TIMEZONE;
-    _tzEditing = false;
+        // Позиции "HH:MM" примерно:
+        // "Start: " = 7 символов * 6px = 42px (примерно)
+        // лучше сделать чуть проще: фиксированный x после текста.
+        // Здесь мы не используем GFX измерение текста, чтобы не усложнять.
+        const int baseX = 12 + 42;
+        const int underlineYStart = y0 + ((_nightField == NightField::START) ? row : 2 * row) + 10;
 
-    // ------------------------------------------------------------------------
-    // КЛЮЧЕВОЕ:
-    // при входе мы читаем сохранённый timezone из EEPROM (prefs)
-    // и выставляем _tzIndex на соответствующий элемент массива TZ_LIST
-    // ------------------------------------------------------------------------
-    long savedGmt = (long)prefs.tzGmtOffset();
-    int  savedDst = (int)prefs.tzDstOffset();
-
-    int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
-    for (int i = 0; i < n; i++) {
-        if (TZ_LIST[i].gmtOffset == savedGmt &&
-            TZ_LIST[i].dstOffset == savedDst) {
-            _tzIndex = i;
-            break;
+        if (_timePart == TimePart::HH) {
+            _tft.drawFastHLine(baseX, underlineYStart + 8, 12, ST77XX_WHITE); // HH
+        } else {
+            _tft.drawFastHLine(baseX + 18, underlineYStart + 8, 12, ST77XX_WHITE); // MM
         }
     }
-
-    _dirty = true;
 }
 
-void SettingsScreen::exitTimezoneMenu(bool apply) {
-    if (apply) {
-        const TzItem& tz = TZ_LIST[_tzIndex];
-
-        // --------------------------------------------------------------------
-        // КЛЮЧЕВОЕ:
-        // 1) сохраняем в EEPROM
-        // 2) применяем в TimeService
-        // --------------------------------------------------------------------
-        prefs.setTimezone((int32_t)tz.gmtOffset, (int32_t)tz.dstOffset);
-        prefs.save();
-
-        _time.setTimezone(tz.gmtOffset, tz.dstOffset);
-    }
-
-    _level = Level::ROOT;
-    _tzEditing = false;
-    _dirty = true;
-}
-
-void SettingsScreen::tzLeft()  { _dirty = true; }
-void SettingsScreen::tzRight() { _dirty = true; }
-
-void SettingsScreen::tzUp() {
-    if (!_tzEditing) return;
-    int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
-    _tzIndex = (_tzIndex + 1) % n;
-}
-
-void SettingsScreen::tzDown() {
-    if (!_tzEditing) return;
-    int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
-    _tzIndex = (_tzIndex + n - 1) % n;
-}
-
-void SettingsScreen::tzEnter() {
-    // toggle edit
-    _tzEditing = !_tzEditing;
-    _dirty = true;
-}
-
-void SettingsScreen::tzExit() {
-    // если в edit — просто выходим из edit
-    // иначе — выходим из меню с apply=true (сохранить + применить)
-    if (_tzEditing) {
-        _tzEditing = false;
-        _dirty = true;
-    } else {
-        exitTimezoneMenu(true);
-    }
-}
-
-void SettingsScreen::drawTimezoneMenu() {
+void SettingsScreen::drawTimezone() {
     const Theme& th = theme();
 
+    // ---- Title
     _tft.setTextSize(2);
     _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(20, 8);
+    _tft.setCursor(18, 8);
     _tft.print("Timezone");
 
     _tft.setTextSize(1);
-    _tft.setCursor(20, 48);
 
-    uint16_t color = _tzEditing ? ST77XX_WHITE : th.accent;
+    // Одно поле:
+    // NAV: accent, EDIT: white
+    uint16_t color = (_mode == UiMode::EDIT) ? ST77XX_WHITE : th.accent;
+
+    _tft.setCursor(12, 44);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Zone:");
+
+    _tft.setCursor(12, 60);
     _tft.setTextColor(color, th.bg);
     _tft.print(TZ_LIST[_tzIndex].name);
 
-    if (_tzEditing) {
-        _tft.drawFastHLine(20, 56, 80, ST77XX_WHITE);
+    // Подчёркивание в EDIT как явный индикатор режима
+    if (_mode == UiMode::EDIT) {
+        _tft.drawFastHLine(12, 68, 80, ST77XX_WHITE);
     }
 }

@@ -9,13 +9,6 @@
 #include "services/TimeService.h"
 #include "services/PreferencesService.h"
 
-/*
- * SettingsScreen
- * --------------
- * Root Settings + Night Mode + Timezone submenu
- * 4 hardware buttons UX
- */
-
 class SettingsScreen : public Screen {
 public:
     SettingsScreen(
@@ -27,7 +20,6 @@ public:
         UiVersionService& uiVersion
     );
 
-    // ===== Screen =====
     void begin() override;
     void update() override;
 
@@ -37,29 +29,31 @@ public:
     void onThemeChanged() override;
 
     // ===== Buttons =====
-    void onLeft();
-    void onRight();
-    void onOk();
-    void onBack();
+    void onShortLeft();
+    void onShortRight();
+    void onShortOk();
+    void onShortBack();
+    void onLongOk();
+    void onLongBack();
 
-    void onOkLong();
-    void onBackLong();
-
-    // ===== Exit =====
     bool exitRequested() const;
     void clearExitRequest();
 
 private:
-    // ===== Levels =====
     enum class Level : uint8_t {
         ROOT,
-        NIGHT_MODE,
+        NIGHT,
         TIMEZONE
     };
 
-    // ===== Night submenu =====
+    enum class UiMode : uint8_t {
+        NAV,
+        EDIT
+    };
+
+    // ===== Night =====
     enum class NightField : uint8_t {
-        MODE = 0,
+        MODE,
         START,
         END
     };
@@ -69,40 +63,35 @@ private:
         MM
     };
 
-    // ===== Timezone submenu =====
+    // ===== Timezone =====
     struct TzItem {
         const char* name;
         long gmtOffset;
         int  dstOffset;
     };
 
+    struct MenuItem {
+        const char* label;
+        Level target;
+    };
+
 private:
-    // ===== Draw =====
+    // ===== Core =====
     void redrawAll();
-    void drawTitle();
-    void drawList();
-    void drawNightMenu();
-    void drawTimezoneMenu();
+    void drawRoot();
+    void drawNight();
+    void drawTimezone();
 
-    // ===== Night logic =====
-    void enterNightMenu();
-    void exitNightMenu(bool apply);
-    void nightLeft();
-    void nightRight();
-    void nightUp();
-    void nightDown();
-    void nightEnter();
-    void nightExit();
+    void enterSubmenu(Level lvl);
+    void exitSubmenu(bool apply);
 
-    // ===== Timezone logic =====
-    void enterTimezoneMenu();
-    void exitTimezoneMenu(bool apply);
-    void tzLeft();
-    void tzRight();
-    void tzUp();
-    void tzDown();
-    void tzEnter();
-    void tzExit();
+    void enterEdit();
+    void exitEdit(bool apply);
+
+    void navLeft();
+    void navRight();
+    void editInc();
+    void editDec();
 
 private:
     Adafruit_ST7735&  _tft;
@@ -112,28 +101,37 @@ private:
     TimeService&      _time;
     UiVersionService& _ui;
 
-    bool _dirty = true;
-    bool _exitRequested = false;
+    bool   _dirty = true;
+    bool   _exitRequested = false;
 
-    // ===== Root =====
-    static constexpr int ITEM_COUNT = 6;
+    Level  _level = Level::ROOT;
+    UiMode _mode  = UiMode::NAV;
+
+    // ===== ROOT =====
     int _selected = 0;
 
-    // ===== State =====
-    Level _level = Level::ROOT;
+    static constexpr MenuItem MENU[] = {
+        { "Wi-Fi",     Level::ROOT     },
+        { "Timezone",  Level::TIMEZONE },
+        { "Night mode",Level::NIGHT    },
+        { "About",     Level::ROOT     }
+    };
 
     // ===== Night state =====
     NightField _nightField = NightField::MODE;
     TimePart   _timePart   = TimePart::HH;
-    bool       _editing    = false;
 
     NightService::Mode _tmpMode;
     int _tmpStartMin = 0;
     int _tmpEndMin   = 0;
 
+    NightService::Mode _bakMode;
+    int _bakStartMin;
+    int _bakEndMin;
+
     // ===== Timezone state =====
-    int  _tzIndex = 0;
-    bool _tzEditing = false;
+    int _tzIndex = 0;
+    int _bakTzIndex = 0;
 
     static constexpr TzItem TZ_LIST[] = {
         { "UTC",       0,        0 },

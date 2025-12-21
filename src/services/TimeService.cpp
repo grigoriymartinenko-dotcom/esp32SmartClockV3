@@ -71,9 +71,21 @@ void TimeService::updateTime() {
 
     // если NTP ещё не помечен как SYNCED — считаем что он пришёл
     // (на практике getLocalTime начинает давать валидное время после SNTP)
+// системное время есть → обновляем кэш
+_timeinfo = t;
+_valid = true;
+
+// ==========================================
+// 🔥 ВАЖНО:
+// если время пришло из RTC — source остаётся RTC
+// NTP подтверждаем ТОЛЬКО один раз
+// ==========================================
+if (_syncState == SYNCING && !_ntpConfirmed) {
+    // первый валидный ответ SNTP
+    _ntpConfirmed = true;
     _source = NTP;
     _syncState = SYNCED;
-
+}
     if (t.tm_min != _lastMinute) {
         _lastMinute = t.tm_min;
         _uiVersion.bump(UiChannel::TIME);
@@ -87,6 +99,7 @@ void TimeService::updateTime() {
 
 void TimeService::syncNtp() {
     _syncState = SYNCING;
+    _ntpConfirmed = false;
 }
 
 bool TimeService::isValid() const {
@@ -114,3 +127,4 @@ bool TimeService::getTm(tm& out) const {
     out = _timeinfo;
     return true;
 }
+

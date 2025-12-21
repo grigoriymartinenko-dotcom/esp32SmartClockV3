@@ -60,6 +60,7 @@ public:
     bool getTm(tm& out) const;
 
 private:
+    bool _ntpConfirmed = false;   // 🔥 реальный приход NTP
     void updateTime();
     void syncNtp();
 

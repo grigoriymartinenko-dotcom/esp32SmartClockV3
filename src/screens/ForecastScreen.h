@@ -9,14 +9,17 @@
 /*
  * ForecastScreen
  * --------------
- * Реактивный экран прогноза (today only).
+ * Реактивный экран прогноза (до 5 дней).
  *
- * ПРАВИЛА:
- *  - StatusBar: ДА
- *  - BottomBar: НЕТ
- *  - Нижней линии НЕТ
- *  - В begin() очищает свою область ОДИН раз
- *  - Далее рисует ТОЛЬКО изменившиеся строки (частичная перерисовка)
+ * UX:
+ *  - SHORT LEFT/RIGHT -> листание дней
+ *  - LONG BACK        -> Clock (AppController)
+ *  - LONG OK          -> Settings (глобально)
+ *
+ * Состояния:
+ *  - LOADING  -> прогноз ещё загружается
+ *  - READY    -> данные есть
+ *  - ERROR    -> ошибка (WiFi / HTTP / JSON)
  */
 class ForecastScreen : public Screen {
 public:
@@ -33,34 +36,48 @@ public:
     bool hasStatusBar() const override { return true; }
     bool hasBottomBar() const override { return false; }
 
+    // вызывается AppController
+    void onShortLeft();
+    void onShortRight();
+
 private:
-    // Рисует/обновляет конкретные элементы (частично)
-    void drawTitle(bool force);
-    void drawNoData(bool force);
+    enum class UiState : uint8_t {
+        LOADING,
+        READY,
+        ERROR
+    };
+
+private:
+    // draw helpers
+    void drawHeader(bool force, const ForecastDay* d, uint8_t idx, uint8_t total);
+    void drawLoading(bool force);
+    void drawError(bool force);
     void drawRowDay(bool force, int dayTemp);
     void drawRowNight(bool force, int nightTemp);
     void drawRowHum(bool force, int hum);
 
-    // Утилиты
+    // utils
     void clearWorkArea();
     void hardClearBottom2px();
     void resetCache();
     bool themeChanged() const;
 
-    // Экран / сервисы
+private:
     Adafruit_ST7735& _tft;
     ForecastService& _forecast;
     LayoutService&   _layout;
 
-    // dirty для "полного" кадра после begin() или смены темы
     bool _dirty = true;
 
-    // ==== кеш отрисованных значений (для частичной перерисовки) ====
-    bool _lastReady = false;
+    UiState _state = UiState::LOADING;
+    UiState _lastState = UiState::ERROR;
+
+    uint8_t _dayIndex = 0;
+    uint8_t _lastDayIndex = 255;
+
     int  _lastDay   = -10000;
     int  _lastNight = -10000;
     int  _lastHum   = -1;
 
-    // следим за темой (если поменялась — полный redraw)
     uint16_t _lastBg = 0;
 };

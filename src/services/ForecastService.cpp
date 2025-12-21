@@ -6,16 +6,27 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 #include "services/ForecastService.h"
 
 /*
- * ============================================================
- * ForecastService.cpp (FREE API 2.5)
+ * ForecastService.cpp
+ * -------------------
+ * FREE OpenWeather /data/2.5/forecast (3h шаг) → агрегируем в дни.
  *
- * Получаем прогноз каждые 3 часа и
- * собираем средние значения за день.
- * ============================================================
+ * ВАЖНОЕ исправление:
+ * Раньше "дни" считались так:
+ *     firstDay = ts - (ts % 86400)
+ * Это считает сутки в UTC, а у нас нужен ЛОКАЛЬНЫЙ день (Kyiv timezone).
+ *
+ * Теперь:
+ *  - для каждого item берём localtime_r(ts) -> tm
+ *  - используем tm_yday (день года) + tm_year как "ключ дня"
+ *  - index = (key - todayKey) → 0..4
+ *
+ * Так "Day 09..18" и "Night" всегда будут в одном календарном дне,
+ * и температуры не будут "съезжать" на соседний день.
  */
 
 ForecastService::ForecastService(
@@ -41,10 +52,8 @@ void ForecastService::begin() {
 void ForecastService::update() {
     if (_updating) return;
 
-    uint32_t now = millis();
-    if (now - _lastAttemptMs < RETRY_INTERVAL_MS)
-        return;
-
+    const uint32_t now = millis();
+    if (now - _lastAttemptMs < RETRY_INTERVAL_MS) return;
     _lastAttemptMs = now;
 
     if (WiFi.status() != WL_CONNECTED) {
@@ -52,8 +61,7 @@ void ForecastService::update() {
         return;
     }
 
-    if (!shouldUpdate())
-        return;
+    if (!shouldUpdate()) return;
 
     _updating = true;
 
@@ -83,6 +91,14 @@ const ForecastDay* ForecastService::today() const {
     return _model.today();
 }
 
+const ForecastDay* ForecastService::day(uint8_t index) const {
+    return _model.day(index);
+}
+
+uint8_t ForecastService::daysCount() const {
+    return _model.daysCount;
+}
+
 const char* ForecastService::lastError() const {
     return _model.lastError;
 }
@@ -101,11 +117,11 @@ bool ForecastService::fetchForecast() {
     client.setInsecure();
 
     HTTPClient http;
-    String url = buildForecastUrl();
+    const String url = buildForecastUrl();
     Serial.println(url);
 
     http.begin(client, url);
-    int code = http.GET();
+    const int code = http.GET();
 
     if (code != HTTP_CODE_OK) {
         setError("HTTP error");
@@ -113,21 +129,15 @@ bool ForecastService::fetchForecast() {
         return false;
     }
 
-    // =========================================================
-    // 🔥 ВАЖНО: FREE forecast = БОЛЬШОЙ JSON
-    // =========================================================
+    // FREE forecast = большой JSON
     DynamicJsonDocument doc(45000);
-
     DeserializationError err = deserializeJson(doc, http.getStream());
+    http.end();
+
     if (err) {
-        Serial.print("[Forecast] JSON error: ");
-        Serial.println(err.c_str());
         setError(err.c_str());
-        http.end();
         return false;
     }
-
-    http.end();
 
     JsonArray list = doc["list"];
     if (list.isNull()) {
@@ -137,33 +147,105 @@ bool ForecastService::fetchForecast() {
 
     _model.reset();
 
-    float daySum = 0, nightSum = 0;
-    int dayCnt = 0, nightCnt = 0;
+    // -----------------------------
+    // "Ключ дня" = (tm_year, tm_yday)
+    // Чтобы получить индекс 0..4, нужен todayKey.
+    // -----------------------------
+    time_t nowTs = time(nullptr);
+    tm nowLocal{};
+    localtime_r(&nowTs, &nowLocal);
 
+    // Если время ещё не синхронизировано и localtime() мусор —
+    // прогноз всё равно можно агрегировать, но корректность "дней" пострадает.
+    // В нормальном режиме NTP уже выставляет время и timezone, так что ок.
+    const int todayKey = (nowLocal.tm_year * 400) + nowLocal.tm_yday;
+
+    struct Acc {
+        bool used = false;
+        float daySum = 0;
+        float nightSum = 0;
+        int dayCnt = 0;
+        int nightCnt = 0;
+
+        uint32_t dayMidnightDt = 0;
+        uint8_t weekday = 0;
+
+        // влажность: можно среднюю, но для простоты берём последнее значение дня
+        uint8_t hum = 0;
+    };
+
+    Acc acc[FORECAST_MAX_DAYS] = {};
+
+    // -----------------------------
+    // Проходим все 3h точки прогноза
+    // -----------------------------
     for (JsonObject item : list) {
-        int hour = item["dt_txt"].as<String>().substring(11, 13).toInt();
-        float temp = item["main"]["temp"] | NAN;
 
-        if (hour >= 9 && hour <= 18) {
-            daySum += temp;
-            dayCnt++;
+        time_t ts = item["dt"].as<time_t>();
+        tm t{};
+        localtime_r(&ts, &t);
+
+        // индекс дня относительно сегодня
+        const int key = (t.tm_year * 400) + t.tm_yday;
+        const int dayIndex = key - todayKey;
+
+        if (dayIndex < 0 || dayIndex >= FORECAST_MAX_DAYS) {
+            continue; // не интересуют дни вне окна 0..4
+        }
+
+        // температура
+        const float temp = item["main"]["temp"] | NAN;
+        const uint8_t hum = item["main"]["humidity"] | 0;
+
+        // "день" = 09..18
+        if (t.tm_hour >= 9 && t.tm_hour <= 18) {
+            acc[dayIndex].daySum += temp;
+            acc[dayIndex].dayCnt++;
         } else {
-            nightSum += temp;
-            nightCnt++;
+            acc[dayIndex].nightSum += temp;
+            acc[dayIndex].nightCnt++;
+        }
+
+        acc[dayIndex].hum = hum;
+        acc[dayIndex].used = true;
+
+        // первый раз для этого дня фиксируем:
+        // - weekday
+        // - dt полуночи (локальной!)
+        if (acc[dayIndex].dayMidnightDt == 0) {
+            tm m = t;
+            m.tm_hour = 0;
+            m.tm_min  = 0;
+            m.tm_sec  = 0;
+            time_t midnight = mktime(&m); // mktime работает в локальной TZ
+            acc[dayIndex].dayMidnightDt = (uint32_t)midnight;
+            acc[dayIndex].weekday = (uint8_t)m.tm_wday;
         }
     }
 
-    ForecastDay& d = _model.days[0];
-    d.tempDay   = dayCnt   ? daySum   / dayCnt   : NAN;
-    d.tempNight = nightCnt ? nightSum / nightCnt : NAN;
-    d.humidity  = list[0]["main"]["humidity"] | 0;
+    // -----------------------------
+    // Собираем модель из acc[] по порядку 0..4
+    // -----------------------------
+    for (uint8_t i = 0; i < FORECAST_MAX_DAYS; i++) {
+        if (!acc[i].used) continue;
 
-    _model.daysCount = 1;
-    return true;
+        ForecastDay& d = _model.days[_model.daysCount];
+
+        d.dt = acc[i].dayMidnightDt;
+        d.weekday = acc[i].weekday;
+
+        d.tempDay   = acc[i].dayCnt   ? (acc[i].daySum   / acc[i].dayCnt)   : NAN;
+        d.tempNight = acc[i].nightCnt ? (acc[i].nightSum / acc[i].nightCnt) : NAN;
+        d.humidity  = acc[i].hum;
+
+        _model.daysCount++;
+        if (_model.daysCount >= FORECAST_MAX_DAYS) break;
+    }
+
+    return _model.daysCount > 0;
 }
 
 void ForecastService::setError(const char* msg) {
-    // ❗ НЕ трогаем ready
     strncpy(_model.lastError, msg, sizeof(_model.lastError) - 1);
     _model.lastError[sizeof(_model.lastError) - 1] = '\0';
 }

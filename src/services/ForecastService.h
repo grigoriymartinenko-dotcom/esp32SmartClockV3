@@ -5,15 +5,17 @@
 
 /*
  * ============================================================
- * ForecastService (FREE VERSION)
+ * ForecastService (FREE OpenWeather 2.5)
  * ============================================================
  *
- * Использует БЕСПЛАТНЫЙ OpenWeather API 2.5:
+ * Использует:
  *   /data/2.5/forecast
  *
- * Данные приходят каждые 3 часа → агрегируем по дням.
+ * Данные каждые 3 часа → агрегируем по дням.
  *
- * НЕ ИСПОЛЬЗУЕТ One Call 3.0 (платный).
+ * Ограничения:
+ *  - максимум 5 дней
+ *  - без One Call 3.0
  * ============================================================
  */
 class ForecastService {
@@ -29,7 +31,11 @@ public:
     void update();
 
     bool isReady() const;
+
     const ForecastDay* today() const;
+    const ForecastDay* day(uint8_t index) const;
+    uint8_t daysCount() const;
+
     const char* lastError() const;
 
 private:

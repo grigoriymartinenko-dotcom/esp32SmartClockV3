@@ -5,8 +5,7 @@
  * StatusBar.cpp
  * -------------
  * Полностью реактивная статусная панель.
- * Никаких таймеров, никакого мигания, никаких millis().
- * Рисует ТОЛЬКО когда _dirty == true.
+ * Никаких таймеров, никаких задержек.
  */
 
 StatusBar::StatusBar(
@@ -19,20 +18,13 @@ StatusBar::StatusBar(
 , _time(time)
 {}
 
-/*
- * markDirty()
- * -----------
- * Явно помечает StatusBar на полную перерисовку.
- */
+// ------------------------------------------------------------
+// public API
+// ------------------------------------------------------------
 void StatusBar::markDirty() {
     _dirty = true;
 }
 
-/*
- * setWiFiStatus()
- * ----------------
- * Вызывается СНАРУЖИ при изменении Wi-Fi состояния.
- */
 void StatusBar::setWiFiStatus(Status s) {
     if (_wifi != s) {
         _wifi = s;
@@ -40,11 +32,6 @@ void StatusBar::setWiFiStatus(Status s) {
     }
 }
 
-/*
- * setNtpStatus()
- * ---------------
- * Вызывается СНАРУЖИ при изменении NTP состояния.
- */
 void StatusBar::setNtpStatus(Status s) {
     if (_ntp != s) {
         _ntp = s;
@@ -52,23 +39,15 @@ void StatusBar::setNtpStatus(Status s) {
     }
 }
 
-/*
- * update()
- * --------
- * Единственная точка входа для перерисовки.
- */
 void StatusBar::update() {
     if (!_dirty) return;
     _dirty = false;
-
     draw();
 }
 
-/*
- * draw()
- * ------
- * Полная отрисовка статусбара.
- */
+// ------------------------------------------------------------
+// draw
+// ------------------------------------------------------------
 void StatusBar::draw() {
 
     const Theme& th = _theme.current();
@@ -78,21 +57,25 @@ void StatusBar::draw() {
     _tft.setTextSize(1);
     _tft.setTextWrap(false);
 
-    // --- фон ---
+    // --- background ---
     _tft.fillRect(0, 0, _tft.width(), HEIGHT, th.bg);
 
-    // ===== Wi-Fi (LEFT) =====
+    // =========================================================
+    // LEFT: WiFi
+    // =========================================================
     _tft.setTextColor(statusColor(_wifi, th), th.bg);
-    _tft.setCursor(4, 6);
-    _tft.print('W');
-    _tft.print(statusChar(_wifi));
+    _tft.setCursor(2, 6);
+    _tft.print("WiFi:");
+    _tft.print(statusText(_wifi));
 
-    // ===== DATE (CENTER) =====
+    // =========================================================
+    // CENTER: DATE
+    // =========================================================
     if (_time.isValid()) {
-        char dateBuf[12];
+        char buf[12];
         snprintf(
-            dateBuf,
-            sizeof(dateBuf),
+            buf,
+            sizeof(buf),
             "%02d.%02d.%04d",
             _time.day(),
             _time.month(),
@@ -101,53 +84,56 @@ void StatusBar::draw() {
 
         int16_t x1, y1;
         uint16_t w, h;
-        _tft.getTextBounds(dateBuf, 0, 0, &x1, &y1, &w, &h);
+        _tft.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
 
         _tft.setTextColor(th.textSecondary, th.bg);
         _tft.setCursor((_tft.width() - w) / 2, 6);
-        _tft.print(dateBuf);
+        _tft.print(buf);
     }
 
-    // ===== NTP (RIGHT) =====
-    _tft.setTextColor(statusColor(_ntp, th), th.bg);
-    _tft.setCursor(_tft.width() - 24, 6);
-    _tft.print('N');
-    _tft.print(statusChar(_ntp));
+    // =========================================================
+    // RIGHT: TIME SOURCE (RTC / NTP)
+    // =========================================================
+    TimeService::Source src = _time.source();
+
+    uint16_t col =
+        (src == TimeService::NTP) ? th.textPrimary :
+        (src == TimeService::RTC) ? th.textSecondary :
+                                    th.muted;
+
+    _tft.setTextColor(col, th.bg);
+    _tft.setCursor(_tft.width() - 28, 6);
+    _tft.print(timeSourceText(src));
 }
 
-/*
- * statusChar()
- * -------------
- * Символ по статусу (БЕЗ мигания).
- */
-char StatusBar::statusChar(Status s) const {
+// ------------------------------------------------------------
+// helpers
+// ------------------------------------------------------------
+const char* StatusBar::statusText(Status s) const {
     switch (s) {
-        case ONLINE:     return '+';
-        case CONNECTING: return '*';
-        case ERROR:      return '!';
+        case ONLINE:     return "+";
+        case CONNECTING: return "*";
+        case ERROR:      return "!";
         case OFFLINE:
-        default:         return '-';
+        default:         return "-";
     }
 }
 
-/*
- * statusColor()
- * --------------
- * Цвет по статусу.
- */
 uint16_t StatusBar::statusColor(Status s, const Theme& th) const {
     switch (s) {
-        case ERROR:
-            return ST7735_RED;        // 🔴 явная ошибка
-
-        case CONNECTING:
-            return th.accent;         // 🔵 процесс
-
-        case ONLINE:
-            return th.textPrimary;    // 🟢 OK
-
+        case ERROR:      return ST7735_RED;
+        case CONNECTING: return th.accent;
+        case ONLINE:     return th.textPrimary;
         case OFFLINE:
-        default:
-            return th.textSecondary;  // ⚪ неактивно
+        default:         return th.textSecondary;
+    }
+}
+
+const char* StatusBar::timeSourceText(TimeService::Source s) const {
+    switch (s) {
+        case TimeService::RTC: return "RTC";
+        case TimeService::NTP: return "NTP";
+        case TimeService::NONE:
+        default:               return "---";
     }
 }

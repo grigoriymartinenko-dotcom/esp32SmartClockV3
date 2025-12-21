@@ -206,8 +206,6 @@ static bool rtcWrittenAfterNtp = false;
 // =====================================================
 // SETUP
 // =====================================================
-// … всё без изменений выше …
-
 void setup() {
     Serial.begin(115200);
 
@@ -230,7 +228,7 @@ void setup() {
         prefs.nightEnd()
     );
 
-    // ---------- Timezone (🔥 ИЗ EEPROM) ----------
+    // ---------- Timezone ----------
     timeService.setTimezone(
         prefs.tzGmtOffset(),
         prefs.tzDstOffset()
@@ -277,11 +275,36 @@ void setup() {
 // =====================================================
 void loop() {
 
-    // ---------- Services ----------
+    // =================================================
+    // 1) БЫСТРЫЕ сервисы (НЕ блокируют UI)
+    // =================================================
     timeService.update();
+    nightService.update(timeService);
+    dht.update();
+    connectivity.update();
 
-    // ---------- RTC write-back after NTP ----------
-    if (!rtcWrittenAfterNtp && timeService.syncState() == TimeService::SYNCED) {
+    // =================================================
+    // 2) INPUT — ВСЕГДА ПЕРВЫМ
+    //    (кнопки и навигация не должны ждать HTTP)
+    // =================================================
+    ButtonEvent e;
+    while (buttons.poll(e)) {
+        app.handleEvent(e);
+    }
+
+    // =================================================
+    // 3) МЕДЛЕННЫЕ сервисы
+    //    forecastService.update() внутри делает
+    //    HTTP + TLS + JSON → может блокировать
+    // =================================================
+    forecastService.update();
+
+    // =================================================
+    // 4) RTC write-back после NTP (редко)
+    // =================================================
+    if (!rtcWrittenAfterNtp &&
+        timeService.syncState() == TimeService::SYNCED) {
+
         tm now;
         if (getLocalTime(&now)) {
             rtc.write(now);
@@ -289,28 +312,8 @@ void loop() {
         }
     }
 
-    nightService.update(timeService);
-    forecastService.update();
-    dht.update();
-    connectivity.update();
-
-    // ---------- Input ----------
-    ButtonEvent e;
-    while (buttons.poll(e)) {
-        app.handleEvent(e);
-    }
-
-    // ---------- Draw ----------
+    // =================================================
+    // 5) DRAW (централизованно)
+    // =================================================
     screenManager.update();
-
-    if (screenManager.currentHasStatusBar()) {
-        statusBar.update();
-    }
-
-    if (screenManager.currentHasBottomBar()) {
-        bottomBar.update();
-    }
-
-    sepStatus.update();
-    sepBottom.update();
 }
