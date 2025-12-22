@@ -29,8 +29,7 @@ SettingsScreen::SettingsScreen(
     , _night(nightService)
     , _time(timeService)
     , _ui(uiVersion)
-{
-}
+{}
 
 // ============================================================================
 // begin
@@ -63,44 +62,48 @@ void SettingsScreen::onThemeChanged() {
 }
 
 // ============================================================================
-// BUTTONS
+// BUTTONS — NORMAL UX
 // ============================================================================
 void SettingsScreen::onShortLeft() {
-    if (_mode == UiMode::NAV) { navLeft(); return; }
+    if (_mode == UiMode::NAV) navLeft();
+    else                      editDec();
 }
 
 void SettingsScreen::onShortRight() {
-    if (_mode == UiMode::NAV) { navRight(); return; }
+    if (_mode == UiMode::NAV) navRight();
+    else                      editInc();
 }
 
 void SettingsScreen::onShortOk() {
-    if (_mode == UiMode::EDIT) editInc();
-}
-
-void SettingsScreen::onShortBack() {
-    if (_mode == UiMode::EDIT) editDec();
-}
-
-void SettingsScreen::onLongOk() {
-    if (_level == Level::ROOT) {
+    // ===== ROOT: вход в подменю =====
+    if (_mode == UiMode::NAV && _level == Level::ROOT) {
         enterSubmenu(MENU[_selected].target);
         return;
     }
 
-    // SUBMENU
-    if (_mode == UiMode::NAV) enterEdit();
-    else                      exitEdit(true);
+    // ===== SUBMENU =====
+    if (_mode == UiMode::NAV) {
+        enterEdit();
+    } else {
+        exitEdit(true);   // APPLY
+    }
 }
 
-void SettingsScreen::onLongBack() {
-    if (_level == Level::ROOT) {
-        _exitRequested = true;
+void SettingsScreen::onShortBack() {
+    if (_mode == UiMode::EDIT) {
+        exitEdit(false);  // CANCEL
         return;
     }
 
-    if (_mode == UiMode::EDIT) exitEdit(false);
-    else                       exitSubmenu(true);
+    if (_level == Level::ROOT) {
+        _exitRequested = true;
+    } else {
+        exitSubmenu(true);
+    }
 }
+
+void SettingsScreen::onLongOk()   {}
+void SettingsScreen::onLongBack() {}
 
 // ============================================================================
 // Exit flags
@@ -147,27 +150,32 @@ void SettingsScreen::navRight() {
 }
 
 // ============================================================================
-// EDIT CORE  ✅ ВАЖНО: ЭТИХ ФУНКЦИЙ НЕ ХВАТАЛО
+// EDIT CORE
 // ============================================================================
 void SettingsScreen::enterEdit() {
     _mode = UiMode::EDIT;
+
+    if (_level == Level::TIMEZONE) {
+        _bakTzIndex = _tzIndex;
+        _bakDstAuto = _dstAuto;
+    }
+
+    if (_level == Level::NIGHT) {
+        _bakMode = _night.mode();
+        _tmpMode = _bakMode;
+    }
+
     _dirty = true;
 }
 
 void SettingsScreen::exitEdit(bool apply) {
-    // Для Timezone:
-    // apply=false -> rollback
-    // apply=true  -> оставить текущие значения
-
     if (!apply) {
         if (_level == Level::TIMEZONE) {
-            _tzIndex  = _bakTzIndex;
-            _dstAuto  = _bakDstAuto;
+            _tzIndex = _bakTzIndex;
+            _dstAuto = _bakDstAuto;
         }
-    } else {
-        if (_level == Level::TIMEZONE) {
-            _bakTzIndex = _tzIndex;
-            _bakDstAuto = _dstAuto;
+        if (_level == Level::NIGHT) {
+            _tmpMode = _bakMode;
         }
     }
 
@@ -179,19 +187,45 @@ void SettingsScreen::exitEdit(bool apply) {
 // EDIT ACTIONS
 // ============================================================================
 void SettingsScreen::editInc() {
+
     if (_level == Level::TIMEZONE) {
         if (_tzField == TzField::ZONE) {
             int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
             _tzIndex = (_tzIndex + 1) % n;
         } else {
-            _dstAuto = !_dstAuto;
+            _dstAuto = (_dstAuto + 1) % 3;   // AUTO → ON → OFF
         }
+        _dirty = true;
+        return;
+    }
+
+    if (_level == Level::NIGHT) {
+        int m = static_cast<int>(_tmpMode);
+        m = (m + 1) % 3;
+        _tmpMode = static_cast<NightService::Mode>(m);
         _dirty = true;
     }
 }
 
 void SettingsScreen::editDec() {
-    editInc();
+
+    if (_level == Level::TIMEZONE) {
+        if (_tzField == TzField::ZONE) {
+            int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
+            _tzIndex = (_tzIndex + n - 1) % n;
+        } else {
+            _dstAuto = (_dstAuto + 2) % 3;
+        }
+        _dirty = true;
+        return;
+    }
+
+    if (_level == Level::NIGHT) {
+        int m = static_cast<int>(_tmpMode);
+        m = (m + 2) % 3;
+        _tmpMode = static_cast<NightService::Mode>(m);
+        _dirty = true;
+    }
 }
 
 // ============================================================================
@@ -207,7 +241,7 @@ void SettingsScreen::enterSubmenu(Level lvl) {
         long gmt = prefs.tzGmtOffset();
         int  dst = prefs.tzDstOffset();
 
-        _dstAuto = (dst != 0);
+        _dstAuto = (dst == 0) ? 2 : 0; // OFF : AUTO
         _bakDstAuto = _dstAuto;
 
         int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
@@ -221,18 +255,40 @@ void SettingsScreen::enterSubmenu(Level lvl) {
         _tzField = TzField::ZONE;
     }
 
+    if (lvl == Level::NIGHT) {
+        _tmpMode = _night.mode();
+        _bakMode = _tmpMode;
+    }
+
     _dirty = true;
 }
 
 void SettingsScreen::exitSubmenu(bool apply) {
+
     if (_level == Level::TIMEZONE && apply) {
         const TzItem& tz = TZ_LIST[_tzIndex];
-        int dstOffset = _dstAuto ? tz.dstOffset : 0;
+
+        int dstOffset = 0;
+        if (_dstAuto == 0 || _dstAuto == 1) {
+            dstOffset = tz.dstOffset;
+        }
 
         prefs.setTimezone(tz.gmtOffset, dstOffset);
         prefs.save();
-
         _time.setTimezone(tz.gmtOffset, dstOffset);
+    }
+
+    if (_level == Level::NIGHT && apply) {
+        _night.setMode(_tmpMode);
+
+        // ===== ЯВНЫЙ MAPPING =====
+        NightModePref pref =
+            (_tmpMode == NightService::Mode::AUTO) ? NightModePref::AUTO :
+            (_tmpMode == NightService::Mode::ON)   ? NightModePref::ON
+                                                   : NightModePref::OFF;
+
+        prefs.setNightMode(pref);
+        prefs.save();
     }
 
     _level = Level::ROOT;
@@ -278,9 +334,24 @@ void SettingsScreen::drawRoot() {
 }
 
 void SettingsScreen::drawNight() {
+    const Theme& th = theme();
+
+    _tft.setTextSize(2);
+    _tft.setCursor(24, 8);
+    _tft.print("Night mode");
+
     _tft.setTextSize(1);
-    _tft.setCursor(12, 40);
-    _tft.print("Night settings...");
+    _tft.setCursor(12, 48);
+
+    uint16_t c = (_mode == UiMode::EDIT) ? ST77XX_WHITE : th.accent;
+    _tft.setTextColor(c, th.bg);
+
+    const char* txt =
+        (_tmpMode == NightService::Mode::AUTO) ? "AUTO" :
+        (_tmpMode == NightService::Mode::ON)   ? "ON"   : "OFF";
+
+    _tft.print("Mode: ");
+    _tft.print(txt);
 }
 
 void SettingsScreen::drawTimezone() {
@@ -311,5 +382,8 @@ void SettingsScreen::drawTimezone() {
     _tft.setCursor(12, 64);
     _tft.setTextColor(dstColor, th.bg);
     _tft.print("DST:  ");
-    _tft.print(_dstAuto ? "AUTO" : "OFF");
+    _tft.print(
+        (_dstAuto == 0) ? "AUTO" :
+        (_dstAuto == 1) ? "ON"   : "OFF"
+    );
 }
