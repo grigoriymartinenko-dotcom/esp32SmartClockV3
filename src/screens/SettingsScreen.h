@@ -22,13 +22,9 @@
  *  - без таймеров
  *  - реактивная перерисовка
  *
- * ВАЖНО:
- *  - enum времени НЕ дублируется
- *  - используется ТОЛЬКО TimeService::Mode
- *
- * UX ПРАВИЛО:
- *  - в сабменю есть "выбранный пункт" как в корневом меню:
- *    зелёный + префикс "> "
+ * Архитектура (после рефакторинга):
+ *  - SettingsScreen.cpp          → логика / nav / edit / state
+ *  - settings/SettingsDraw.cpp   → ТОЛЬКО отрисовка (draw*)
  */
 
 class SettingsScreen : public Screen {
@@ -89,7 +85,7 @@ private:
     };
 
 private:
-    // ===== DRAW =====
+    // ===== DRAW (реализация в settings/SettingsDraw.cpp) =====
     void redrawAll();
     void drawRoot();
     void drawNight();
@@ -169,8 +165,9 @@ private:
     int32_t _tmpTzSec = 0;
     int32_t _bakTzSec = 0;
 
+    // ✅ DST edit-state теперь ВНУТРИ экрана (а не static в .cpp)
     int32_t _tmpDstSec = 0;
-int32_t _bakDstSec = 0;
+    int32_t _bakDstSec = 0;
 
     static constexpr int32_t TZ_STEP = 900;      // 15 min
     static constexpr int32_t TZ_MIN  = -43200;   // -12:00
