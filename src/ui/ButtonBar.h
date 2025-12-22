@@ -74,5 +74,6 @@ private:
     uint8_t _flashRight = 0;
     uint8_t _flashBack  = 0;
 
-    static constexpr uint8_t FLASH_FRAMES = 2;
+    // ⬆️ БЫЛО 2 — СТАЛО 6
+    static constexpr uint8_t FLASH_FRAMES = 6;
 };

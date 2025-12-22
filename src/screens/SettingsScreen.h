@@ -25,6 +25,10 @@
  * ВАЖНО:
  *  - enum времени НЕ дублируется
  *  - используется ТОЛЬКО TimeService::Mode
+ *
+ * UX ПРАВИЛО:
+ *  - в сабменю есть "выбранный пункт" как в корневом меню:
+ *    зелёный + префикс "> "
  */
 
 class SettingsScreen : public Screen {
@@ -105,6 +109,9 @@ private:
     void editInc();
     void editDec();
 
+    // ===== helpers for submenu =====
+    int submenuItemsCount() const;
+
 private:
     Adafruit_ST7735&  _tft;
     LayoutService&    _layout;
@@ -120,7 +127,11 @@ private:
     Level  _level = Level::ROOT;
     UiMode _mode  = UiMode::NAV;
 
+    // root selection
     int _selected = 0;
+
+    // submenu selection
+    int _subSelected = 0;
 
     // ===== Button highlight =====
     HintBtn  _pressedBtn = HintBtn::NONE;
@@ -145,4 +156,23 @@ private:
     // ===== Night =====
     NightService::Mode _tmpMode = NightService::Mode::AUTO;
     NightService::Mode _bakMode = NightService::Mode::AUTO;
+
+    int _tmpNightStart = 22 * 60;
+    int _tmpNightEnd   = 6 * 60;
+
+    int _bakNightStart = 22 * 60;
+    int _bakNightEnd   = 6 * 60;
+
+    static constexpr int NIGHT_STEP_MIN = 15;
+
+    // ===== Timezone =====
+    int32_t _tmpTzSec = 0;
+    int32_t _bakTzSec = 0;
+
+    int32_t _tmpDstSec = 0;
+int32_t _bakDstSec = 0;
+
+    static constexpr int32_t TZ_STEP = 900;      // 15 min
+    static constexpr int32_t TZ_MIN  = -43200;   // -12:00
+    static constexpr int32_t TZ_MAX  =  50400;   // +14:00
 };

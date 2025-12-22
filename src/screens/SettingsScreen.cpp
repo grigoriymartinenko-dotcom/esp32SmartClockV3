@@ -1,5 +1,6 @@
 #include "screens/SettingsScreen.h"
 #include <Adafruit_GFX.h>
+#include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -7,6 +8,12 @@
 // PreferencesService — глобальный объект
 // ============================================================================
 extern PreferencesService prefs;
+
+// ============================================================================
+// TIMEZONE: DST edit temp (НЕ ТРЕБУЕТ правок SettingsScreen.h)
+// ============================================================================
+static int32_t s_tmpDstSec = 0;
+static int32_t s_bakDstSec = 0;
 
 // ============================================================================
 // static constexpr arrays
@@ -25,6 +32,19 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
     int mm = (int)((s % 3600) / 60);
 
     snprintf(out, outSz, "%c%02d:%02d", sign, hh, mm);
+}
+
+static int32_t clampI32(int32_t v, int32_t lo, int32_t hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+static int clampMin(int v) {
+    // wrap 0..1439
+    while (v < 0)     v += 1440;
+    while (v >= 1440) v -= 1440;
+    return v;
 }
 
 // ============================================================================
@@ -55,6 +75,9 @@ void SettingsScreen::begin() {
     _level = Level::ROOT;
     _mode  = UiMode::NAV;
 
+    _selected = 0;
+    _subSelected = 0;
+
     _dirty = true;
 
     _needFullClear  = true;
@@ -67,8 +90,6 @@ void SettingsScreen::begin() {
 // update
 // ============================================================================
 void SettingsScreen::update() {
-
-    // мигание подсказок — ТОЛЬКО здесь (не в обработчиках кнопок)
     if (_hintFlash > 0) {
         _hintFlash--;
         drawButtonHints();
@@ -108,16 +129,19 @@ void SettingsScreen::onShortOk() {
     _pressedBtn = HintBtn::OK;
     _hintFlash  = 3;
 
-    // Timezone — read-only: OK ничего не делает
-    if (_level == Level::TIMEZONE) return;
-
     if (_mode == UiMode::NAV && _level == Level::ROOT) {
         enterSubmenu(MENU[_selected].target);
         return;
     }
 
-    if (_mode == UiMode::NAV) enterEdit();
-    else                      exitEdit(true);
+    if (_mode == UiMode::NAV) {
+        enterEdit();
+        return;
+    }
+}
+
+void SettingsScreen::onLongOk() {
+    if (_mode == UiMode::EDIT) exitEdit(true);
 }
 
 void SettingsScreen::onShortBack() {
@@ -133,7 +157,6 @@ void SettingsScreen::onShortBack() {
     else                       exitSubmenu(true);
 }
 
-void SettingsScreen::onLongOk()   {}
 void SettingsScreen::onLongBack() {}
 
 // ============================================================================
@@ -148,6 +171,19 @@ void SettingsScreen::clearExitRequest() {
 }
 
 // ============================================================================
+// submenu items count
+// ============================================================================
+int SettingsScreen::submenuItemsCount() const {
+    switch (_level) {
+        case Level::TIMEZONE: return 2; // UTC, DST
+        case Level::TIME:     return 1; // Source
+        case Level::NIGHT:    return 3; // Mode, Start, End
+        case Level::ROOT:     return (int)(sizeof(MENU) / sizeof(MENU[0]));
+    }
+    return 1;
+}
+
+// ============================================================================
 // NAVIGATION
 // ============================================================================
 void SettingsScreen::navLeft() {
@@ -155,7 +191,14 @@ void SettingsScreen::navLeft() {
         int n = sizeof(MENU) / sizeof(MENU[0]);
         _selected = (_selected + n - 1) % n;
         _dirty = true;
+        return;
     }
+
+    int n = submenuItemsCount();
+    if (n <= 1) return;
+
+    _subSelected = (_subSelected + n - 1) % n;
+    _dirty = true;
 }
 
 void SettingsScreen::navRight() {
@@ -163,25 +206,48 @@ void SettingsScreen::navRight() {
         int n = sizeof(MENU) / sizeof(MENU[0]);
         _selected = (_selected + 1) % n;
         _dirty = true;
+        return;
     }
+
+    int n = submenuItemsCount();
+    if (n <= 1) return;
+
+    _subSelected = (_subSelected + 1) % n;
+    _dirty = true;
 }
 
 // ============================================================================
 // EDIT CORE
 // ============================================================================
 void SettingsScreen::enterEdit() {
-    // Timezone — read-only
-    if (_level == Level::TIMEZONE) return;
-
     _mode = UiMode::EDIT;
 
     if (_level == Level::TIME) {
         _bakTimeMode = _tmpTimeMode;
+        _dirty = true;
+        return;
+    }
+
+    if (_level == Level::TIMEZONE) {
+        // ✅ Редактируем И UTC И DST (как ты просил)
+        _bakTzSec = prefs.tzGmtOffset();
+        _tmpTzSec = _bakTzSec;
+
+        s_bakDstSec = prefs.tzDstOffset();
+        s_tmpDstSec = s_bakDstSec;
+
+        // НИКАКИХ запретов по _subSelected — обе строки редактируемые
+        _dirty = true;
+        return;
     }
 
     if (_level == Level::NIGHT) {
-        _bakMode = _night.mode();
-        _tmpMode = _bakMode;
+        _bakMode = _tmpMode;
+        _bakNightStart = _tmpNightStart;
+        _bakNightEnd   = _tmpNightEnd;
+
+        _dirty = true;
+        return;
     }
 
     _dirty = true;
@@ -189,10 +255,30 @@ void SettingsScreen::enterEdit() {
 
 void SettingsScreen::exitEdit(bool apply) {
     if (!apply) {
-        if (_level == Level::TIME)  _tmpTimeMode = _bakTimeMode;
-        if (_level == Level::NIGHT) _tmpMode     = _bakMode;
+        if (_level == Level::TIME)     _tmpTimeMode   = _bakTimeMode;
+        if (_level == Level::TIMEZONE) {
+            _tmpTzSec    = _bakTzSec;
+            s_tmpDstSec  = s_bakDstSec;
+        }
+        if (_level == Level::NIGHT) {
+            _tmpMode       = _bakMode;
+            _tmpNightStart = _bakNightStart;
+            _tmpNightEnd   = _bakNightEnd;
+        }
+
+        _mode = UiMode::NAV;
+        _dirty = true;
+        return;
     }
 
+    // APPLY для Timezone — прямо тут
+    if (_level == Level::TIMEZONE) {
+        prefs.setTimezone(_tmpTzSec, s_tmpDstSec);
+        prefs.save();
+        _time.setTimezone((long)_tmpTzSec, (int)s_tmpDstSec);
+    }
+
+    // Night/Time сохраняем при выходе из сабменю (exitSubmenu)
     _mode = UiMode::NAV;
     _dirty = true;
 }
@@ -208,10 +294,36 @@ void SettingsScreen::editInc() {
         return;
     }
 
-    if (_level == Level::NIGHT) {
-        int v = (int)_tmpMode;
-        _tmpMode = (NightService::Mode)((v + 1) % 3);
+    if (_level == Level::TIMEZONE) {
+        // ✅ LEFT/RIGHT меняют выбранную строку: UTC или DST
+        if (_subSelected == 0) {
+            _tmpTzSec = clampI32(_tmpTzSec + TZ_STEP, TZ_MIN, TZ_MAX);
+        } else if (_subSelected == 1) {
+            s_tmpDstSec = clampI32(s_tmpDstSec + TZ_STEP, TZ_MIN, TZ_MAX);
+        }
         _dirty = true;
+        return;
+    }
+
+    if (_level == Level::NIGHT) {
+        if (_subSelected == 0) {
+            int v = (int)_tmpMode;
+            _tmpMode = (NightService::Mode)((v + 1) % 3);
+            _dirty = true;
+            return;
+        }
+
+        if (_subSelected == 1) {
+            _tmpNightStart = clampMin(_tmpNightStart + NIGHT_STEP_MIN);
+            _dirty = true;
+            return;
+        }
+
+        if (_subSelected == 2) {
+            _tmpNightEnd = clampMin(_tmpNightEnd + NIGHT_STEP_MIN);
+            _dirty = true;
+            return;
+        }
     }
 }
 
@@ -223,10 +335,36 @@ void SettingsScreen::editDec() {
         return;
     }
 
-    if (_level == Level::NIGHT) {
-        int v = (int)_tmpMode;
-        _tmpMode = (NightService::Mode)((v + 2) % 3);
+    if (_level == Level::TIMEZONE) {
+        // ✅ LEFT/RIGHT меняют выбранную строку: UTC или DST
+        if (_subSelected == 0) {
+            _tmpTzSec = clampI32(_tmpTzSec - TZ_STEP, TZ_MIN, TZ_MAX);
+        } else if (_subSelected == 1) {
+            s_tmpDstSec = clampI32(s_tmpDstSec - TZ_STEP, TZ_MIN, TZ_MAX);
+        }
         _dirty = true;
+        return;
+    }
+
+    if (_level == Level::NIGHT) {
+        if (_subSelected == 0) {
+            int v = (int)_tmpMode;
+            _tmpMode = (NightService::Mode)((v + 2) % 3);
+            _dirty = true;
+            return;
+        }
+
+        if (_subSelected == 1) {
+            _tmpNightStart = clampMin(_tmpNightStart - NIGHT_STEP_MIN);
+            _dirty = true;
+            return;
+        }
+
+        if (_subSelected == 2) {
+            _tmpNightEnd = clampMin(_tmpNightEnd - NIGHT_STEP_MIN);
+            _dirty = true;
+            return;
+        }
     }
 }
 
@@ -237,7 +375,8 @@ void SettingsScreen::enterSubmenu(Level lvl) {
     _level = lvl;
     _mode  = UiMode::NAV;
 
-    // смена подменю => один полный клир области
+    _subSelected = 0;     // всегда первый пункт
+
     _needFullClear = true;
 
     if (lvl == Level::TIME) {
@@ -248,13 +387,26 @@ void SettingsScreen::enterSubmenu(Level lvl) {
     if (lvl == Level::NIGHT) {
         _tmpMode = _night.mode();
         _bakMode = _tmpMode;
+
+        _tmpNightStart = (int)prefs.nightStart();
+        _tmpNightEnd   = (int)prefs.nightEnd();
+
+        _bakNightStart = _tmpNightStart;
+        _bakNightEnd   = _tmpNightEnd;
+    }
+
+    if (lvl == Level::TIMEZONE) {
+        _tmpTzSec = prefs.tzGmtOffset();
+        _bakTzSec = _tmpTzSec;
+
+        s_tmpDstSec = prefs.tzDstOffset();
+        s_bakDstSec = s_tmpDstSec;
     }
 
     _dirty = true;
 }
 
 void SettingsScreen::exitSubmenu(bool apply) {
-
     if (_level == Level::TIME && apply) {
         prefs.setTimeSource((TimeSourcePref)_tmpTimeMode);
         prefs.save();
@@ -263,11 +415,15 @@ void SettingsScreen::exitSubmenu(bool apply) {
 
     if (_level == Level::NIGHT && apply) {
         _night.setMode(_tmpMode);
+        _night.setAutoRange(_tmpNightStart, _tmpNightEnd);
+
         prefs.setNightMode(
             (_tmpMode == NightService::Mode::AUTO) ? NightModePref::AUTO :
             (_tmpMode == NightService::Mode::ON)   ? NightModePref::ON
                                                    : NightModePref::OFF
         );
+
+        prefs.setNightRange((uint16_t)_tmpNightStart, (uint16_t)_tmpNightEnd);
         prefs.save();
     }
 
@@ -284,10 +440,9 @@ void SettingsScreen::exitSubmenu(bool apply) {
 void SettingsScreen::redrawAll() {
     const Theme& th = theme();
 
-    int yStart = _layout.statusY() + _layout.statusH();
+    int yStart = 0;
     int h      = _layout.buttonBarY() - yStart;
 
-    // Полный клир — только когда реально нужен (переходы/тема)
     if (_needFullClear || _lastDrawnLevel != _level) {
         _tft.fillRect(0, yStart, _tft.width(), h, th.bg);
         _needFullClear  = false;
@@ -324,8 +479,6 @@ void SettingsScreen::drawRoot() {
 
     for (int i = 0; i < count; i++) {
         int y = top + i * rowH;
-
-        // чистим только строку
         _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
 
         bool sel = (i == _selected);
@@ -348,15 +501,22 @@ void SettingsScreen::drawTime() {
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Time");
 
-    _tft.fillRect(0, 40, _tft.width(), 24, th.bg);
+    int top = 40;
+    int rowH = 18;
 
+    _tft.fillRect(0, top, _tft.width(), rowH, th.bg);
+
+    bool sel = (_subSelected == 0);
     _tft.setTextSize(1);
-    _tft.setCursor(20, 48);
+    _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+    _tft.setCursor(12, top + 4);
+    _tft.print(sel ? "> " : "  ");
 
-    _tft.setTextColor(
-        (_mode == UiMode::EDIT) ? ST77XX_RED : th.textPrimary,
-        th.bg
-    );
+    _tft.print("Source: ");
+
+    uint16_t valCol = (_mode == UiMode::EDIT && sel) ? th.error
+                                                     : (sel ? ST77XX_GREEN : th.textPrimary);
+    _tft.setTextColor(valCol, th.bg);
 
     const char* txt =
         (_tmpTimeMode == TimeService::AUTO)      ? "AUTO"  :
@@ -364,12 +524,11 @@ void SettingsScreen::drawTime() {
         (_tmpTimeMode == TimeService::NTP_ONLY) ? "NTP"   :
                                                    "LOCAL";
 
-    _tft.print("Source: ");
     _tft.print(txt);
 }
 
 // ============================================================================
-// NIGHT
+// NIGHT (3 items: Mode / Start / End)
 // ============================================================================
 void SettingsScreen::drawNight() {
     const Theme& th = theme();
@@ -379,56 +538,139 @@ void SettingsScreen::drawNight() {
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Night mode");
 
-    _tft.fillRect(0, 40, _tft.width(), 24, th.bg);
+    int top = 40;
+    int rowH = 18;
 
-    _tft.setTextSize(1);
-    _tft.setCursor(20, 48);
+    char buf[8];
 
-    _tft.setTextColor(
-        (_mode == UiMode::EDIT) ? ST77XX_RED : th.textPrimary,
-        th.bg
-    );
+    // --- Row 0: Mode ---
+    {
+        int y = top;
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
+        bool sel = (_subSelected == 0);
 
-    const char* txt =
-        (_tmpMode == NightService::Mode::AUTO) ? "AUTO" :
-        (_tmpMode == NightService::Mode::ON)   ? "ON"   :
-                                                 "OFF";
+        _tft.setTextSize(1);
+        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        _tft.setCursor(12, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("Mode: ");
 
-    _tft.print("Mode: ");
-    _tft.print(txt);
+        uint16_t col =
+            (_mode == UiMode::EDIT && sel) ? th.error :
+            (sel ? ST77XX_GREEN : th.textPrimary);
+
+        _tft.setTextColor(col, th.bg);
+
+        _tft.print(
+            _tmpMode == NightService::Mode::AUTO ? "AUTO" :
+            _tmpMode == NightService::Mode::ON   ? "ON"   : "OFF"
+        );
+    }
+
+    // --- Row 1: Start ---
+    {
+        int y = top + rowH;
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
+        bool sel = (_subSelected == 1);
+
+        snprintf(buf, sizeof(buf), "%02d:%02d", _tmpNightStart / 60, _tmpNightStart % 60);
+
+        _tft.setTextSize(1);
+        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        _tft.setCursor(12, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("Start: ");
+
+        uint16_t col = (_mode == UiMode::EDIT && sel) ? th.error : th.textPrimary;
+        _tft.setTextColor(col, th.bg);
+        _tft.print(buf);
+    }
+
+    // --- Row 2: End ---
+    {
+        int y = top + rowH * 2;
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
+        bool sel = (_subSelected == 2);
+
+        snprintf(buf, sizeof(buf), "%02d:%02d", _tmpNightEnd / 60, _tmpNightEnd % 60);
+
+        _tft.setTextSize(1);
+        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        _tft.setCursor(12, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("End:   ");
+
+        uint16_t col = (_mode == UiMode::EDIT && sel) ? th.error : th.textPrimary;
+        _tft.setTextColor(col, th.bg);
+        _tft.print(buf);
+    }
 }
 
 // ============================================================================
-// TIMEZONE — РЕАЛЬНЫЕ ДАННЫЕ (READ-ONLY)
+// TIMEZONE
 // ============================================================================
 void SettingsScreen::drawTimezone() {
     const Theme& th = theme();
-
-    int32_t gmt = prefs.tzGmtOffset();
-    int32_t dst = prefs.tzDstOffset();
-
-    char gmtBuf[8];
-    char dstBuf[8];
-    formatOffsetHM(gmt, gmtBuf, sizeof(gmtBuf));
-    formatOffsetHM(dst, dstBuf, sizeof(dstBuf));
 
     _tft.setTextSize(2);
     _tft.setCursor(18, 8);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Timezone");
 
-    _tft.fillRect(0, 34, _tft.width(), 48, th.bg);
+    int top = 40;
+    int rowH = 18;
 
-    _tft.setTextSize(1);
-    _tft.setTextColor(th.textPrimary, th.bg);
+    int32_t utcSec = (_mode == UiMode::EDIT) ? _tmpTzSec : prefs.tzGmtOffset();
+    int32_t dstSec = (_mode == UiMode::EDIT) ? s_tmpDstSec : prefs.tzDstOffset();
 
-    _tft.setCursor(20, 40);
-    _tft.print("UTC ");
-    _tft.print(gmtBuf);
+    char utcBuf[8];
+    char dstBuf[8];
+    formatOffsetHM(utcSec, utcBuf, sizeof(utcBuf));
+    formatOffsetHM(dstSec, dstBuf, sizeof(dstBuf));
 
-    _tft.setCursor(20, 56);
-    _tft.print("DST ");
-    _tft.print(dstBuf);
+    // --- Row 0: UTC ---
+    {
+        int y = top + 0 * rowH;
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
+
+        bool sel = (_subSelected == 0);
+
+        _tft.setTextSize(1);
+        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        _tft.setCursor(12, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("UTC ");
+
+        uint16_t valCol =
+            (_mode == UiMode::EDIT && sel)
+                ? th.error
+                : (sel ? ST77XX_GREEN : th.textPrimary);
+
+        _tft.setTextColor(valCol, th.bg);
+        _tft.print(utcBuf);
+    }
+
+    // --- Row 1: DST ---
+    {
+        int y = top + 1 * rowH;
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
+
+        bool sel = (_subSelected == 1);
+
+        _tft.setTextSize(1);
+        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        _tft.setCursor(12, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("DST ");
+
+        uint16_t valCol =
+            (_mode == UiMode::EDIT && sel)
+                ? th.error
+                : (sel ? ST77XX_GREEN : th.textPrimary);
+
+        _tft.setTextColor(valCol, th.bg);
+        _tft.print(dstBuf);
+    }
 }
 
 // ============================================================================
