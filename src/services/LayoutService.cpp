@@ -70,16 +70,14 @@ int LayoutService::sepBottomY() const {
 
 // ===== SAFE CLOCK RECT =====
 int LayoutService::clockSafeY() const {
-    // 2px зарезервированы под линию Status
-    return sepStatusY() + 2;
+    return sepStatusY() + SEPARATOR_SAFE;
 }
 
 int LayoutService::clockSafeH() const {
     int top = clockSafeY();
 
     if (_hasBottomBar) {
-        // 2px зарезервированы под нижнюю линию
-        return sepBottomY() - 2 - top;
+        return sepBottomY() - SEPARATOR_SAFE - top;
     }
 
     return _tft.height() - top;
