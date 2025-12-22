@@ -2,10 +2,23 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+// =====================================================
+// Night mode
+// =====================================================
 enum class NightModePref : uint8_t {
     AUTO = 0,
     ON   = 1,
     OFF  = 2
+};
+
+// =====================================================
+// Time source preference
+// =====================================================
+enum class TimeSourcePref : uint8_t {
+    AUTO       = 0, // RTC -> NTP (умный режим)
+    RTC_ONLY  = 1, // только RTC
+    NTP_ONLY  = 2, // только NTP
+    LOCAL_ONLY= 3  // ручной / локальный
 };
 
 // ⚠️ packed — без padding
@@ -16,6 +29,9 @@ struct __attribute__((packed)) PreferencesData {
     uint8_t  nightMode;     // NightModePref
     uint16_t nightStart;    // minutes 0..1439
     uint16_t nightEnd;      // minutes 0..1439
+
+    // ===== Time =====
+    uint8_t  timeSource;    // TimeSourcePref
 
     // ===== Timezone =====
     int32_t  tzGmtOffset;   // seconds
@@ -41,6 +57,10 @@ public:
 
     void setNightMode(NightModePref m);
     void setNightRange(uint16_t startMin, uint16_t endMin);
+
+    // ===== Time =====
+    TimeSourcePref timeSource() const;
+    void setTimeSource(TimeSourcePref s);
 
     // ===== Timezone =====
     int32_t tzGmtOffset() const;

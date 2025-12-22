@@ -6,32 +6,37 @@
  * ------
  * Конкретные цветовые схемы.
  * ПОРЯДОК ПОЛЕЙ ДОЛЖЕН СОВПАДАТЬ с Theme.h
+ *
+ * Концепция:
+ *  - основной цвет = время
+ *  - акцент = редкие элементы
+ *  - сервис = muted
  */
 
 // =======================
 // DAY THEME
 // =======================
 constexpr Theme THEME_DAY = {
-    .bg = 0x0000,             // black
+    .bg = 0x0861,             // тёмно-синий фон
 
-    .textPrimary   = 0x07E0,  // green
-    .textSecondary = 0xFFFF, // white
-    .muted         = 0x8410, // gray
+    .textPrimary   = 0x7DDF,  // мягкий циан (время)
+    .textSecondary = 0x57EA,  // зелёный (акценты)
+    .muted         = 0x52B4,  // серо-синий (дата, сервис)
 
-    .accent = 0x001F,        // blue
-    .error  = 0xF800         // red
+    .accent = 0x18E3,         // мягкие линии / разделители
+    .error  = 0xF145          // красный
 };
 
 // =======================
 // NIGHT THEME
 // =======================
 constexpr Theme THEME_NIGHT = {
-    .bg = 0x0000,             // black
+    .bg = 0x0000,             // почти чёрный
 
-    .textPrimary   = 0x03E0,  // dark green
-    .textSecondary = 0x7BEF, // dim white
-    .muted         = 0x4208, // dark gray
+    .textPrimary   = 0x4C7F,  // приглушённый циан
+    .textSecondary = 0x3D66,  // тёмно-зелёный
+    .muted         = 0x4208,  // тёмно-серый
 
-    .accent = 0x0010,        // dim blue
-    .error  = 0x7800         // dark red
+    .accent = 0x0841,         // очень тёмный синий
+    .error  = 0x7800          // тёмно-красный
 };

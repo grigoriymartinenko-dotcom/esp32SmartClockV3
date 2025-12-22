@@ -9,6 +9,24 @@
 #include "services/TimeService.h"
 #include "services/PreferencesService.h"
 
+/*
+ * SettingsScreen
+ * --------------
+ * Экран настроек:
+ *  - Night mode
+ *  - Timezone
+ *  - Time source (AUTO / RTC_ONLY / NTP_ONLY / LOCAL_ONLY)
+ *
+ * Правила:
+ *  - без millis()
+ *  - без таймеров
+ *  - реактивная перерисовка
+ *
+ * ВАЖНО:
+ *  - enum времени НЕ дублируется
+ *  - используется ТОЛЬКО TimeService::Mode
+ */
+
 class SettingsScreen : public Screen {
 public:
     SettingsScreen(
@@ -44,17 +62,13 @@ private:
     enum class Level : uint8_t {
         ROOT,
         NIGHT,
-        TIMEZONE
+        TIMEZONE,
+        TIME
     };
 
     enum class UiMode : uint8_t {
         NAV,
         EDIT
-    };
-
-    enum class TzField : uint8_t {
-        ZONE,
-        DST
     };
 
     enum class HintBtn : uint8_t {
@@ -63,12 +77,6 @@ private:
         RIGHT,
         OK,
         BACK
-    };
-
-    struct TzItem {
-        const char* name;
-        long gmtOffset;
-        int  dstOffset;
     };
 
     struct MenuItem {
@@ -82,6 +90,7 @@ private:
     void drawRoot();
     void drawNight();
     void drawTimezone();
+    void drawTime();
     void drawButtonHints();
 
     // ===== NAV / EDIT =====
@@ -115,36 +124,25 @@ private:
 
     // ===== Button highlight =====
     HintBtn  _pressedBtn = HintBtn::NONE;
-    uint8_t  _hintFlash  = 0;        // сколько кадров держать подсветку
+    uint8_t  _hintFlash  = 0;
 
-    // ===== Timezone =====
-    TzField _tzField = TzField::ZONE;
+    // ===== Anti-flicker / partial clear =====
+    bool  _needFullClear  = true;
+    Level _lastDrawnLevel = Level::ROOT;
 
-    int _tzIndex    = 0;
-    int _bakTzIndex = 0;
-
-    // 0=AUTO, 1=ON, 2=OFF
-    int _dstAuto    = 0;
-    int _bakDstAuto = 0;
+    // ===== Time source (ЕДИНСТВЕННЫЙ enum) =====
+    TimeService::Mode _tmpTimeMode = TimeService::AUTO;
+    TimeService::Mode _bakTimeMode = TimeService::AUTO;
 
     static constexpr MenuItem MENU[] = {
         { "Wi-Fi",      Level::ROOT     },
         { "Timezone",   Level::TIMEZONE },
+        { "Time",       Level::TIME     },
         { "Night mode", Level::NIGHT    },
         { "About",      Level::ROOT     }
     };
 
-    static constexpr TzItem TZ_LIST[] = {
-        { "UTC",       0,        3600 },
-        { "Kyiv",      2*3600,   3600 },
-        { "Berlin",    1*3600,   3600 },
-        { "London",    0,        3600 },
-        { "Istanbul",  3*3600,   3600 },
-        { "New York", -5*3600,   3600 },
-        { "Tokyo",     9*3600,   0    }
-    };
-
     // ===== Night =====
-    NightService::Mode _tmpMode;
-    NightService::Mode _bakMode;
+    NightService::Mode _tmpMode = NightService::Mode::AUTO;
+    NightService::Mode _bakMode = NightService::Mode::AUTO;
 };

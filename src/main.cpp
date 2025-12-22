@@ -185,7 +185,8 @@ ScreenManager screenManager(
     layout,
     sepStatus,
     sepBottom,
-    uiVersion
+    uiVersion,
+    themeService   // ← ДОБАВИТЬ
 );
 
 // =====================================================

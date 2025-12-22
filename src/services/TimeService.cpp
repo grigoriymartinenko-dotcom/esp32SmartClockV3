@@ -1,38 +1,82 @@
 #include "services/TimeService.h"
 #include <Arduino.h>
-#include <sys/time.h>   // settimeofday
+#include <sys/time.h>
 
+// ------------------------------------------------------------
+// ctor
+// ------------------------------------------------------------
 TimeService::TimeService(UiVersionService& uiVersion)
     : _uiVersion(uiVersion)
-{
-}
+{}
 
+// ------------------------------------------------------------
+// begin
+// ------------------------------------------------------------
 void TimeService::begin() {
-    // Стартуем NTP, но не блокируем систему
-    syncNtp();
+    _syncState = NOT_STARTED;
+    _ntpConfirmed = false;
+
+    if (_mode == AUTO || _mode == NTP_ONLY) {
+        syncNtp();
+    }
 }
 
+// ------------------------------------------------------------
+// update
+// ------------------------------------------------------------
+void TimeService::update() {
+    updateTime();
+}
+
+// ------------------------------------------------------------
+// MODE
+// ------------------------------------------------------------
+void TimeService::setMode(Mode m) {
+    if (_mode == m)
+        return;
+
+    _mode = m;
+
+    _syncState    = NOT_STARTED;
+    _ntpConfirmed = false;
+
+    if (_mode == AUTO || _mode == NTP_ONLY) {
+        syncNtp();
+    }
+
+    if (_mode == LOCAL_ONLY) {
+        _source = NONE;
+    }
+
+    _uiVersion.bump(UiChannel::TIME);
+}
+
+TimeService::Mode TimeService::mode() const {
+    return _mode;
+}
+
+// ------------------------------------------------------------
+// TIMEZONE
+// ------------------------------------------------------------
 void TimeService::setTimezone(long gmtOffsetSec, int daylightOffsetSec) {
     _gmtOffsetSec      = gmtOffsetSec;
     _daylightOffsetSec = daylightOffsetSec;
 
-    // Первичная установка (DST пока 0 — пересчитается в update)
+    // DST управляем вручную
     configTime(_gmtOffsetSec, 0, "pool.ntp.org");
 }
 
+// ------------------------------------------------------------
+// RTC
+// ------------------------------------------------------------
 void TimeService::setFromRtc(const tm& t) {
+    if (_mode == NTP_ONLY || _mode == LOCAL_ONLY)
+        return;
+
     _timeinfo = t;
-    _valid = true;
-    _source = RTC;
+    _valid    = true;
+    _source   = RTC;
 
-    _lastMinute = t.tm_min;
-    _lastSecond = t.tm_sec;
-
-    // ==================================================
-    // ВАЖНО:
-    // выставляем system time ESP32,
-    // чтобы getLocalTime() сразу работал
-    // ==================================================
     tm tmp = t;
     time_t epoch = mktime(&tmp);
     if (epoch > 0) {
@@ -45,84 +89,80 @@ void TimeService::setFromRtc(const tm& t) {
     _uiVersion.bump(UiChannel::TIME);
 }
 
-void TimeService::update() {
-    updateTime();
-}
-
+// ------------------------------------------------------------
+// updateTime
+// ------------------------------------------------------------
 void TimeService::updateTime() {
-    tm t;
+
+    if (_mode == LOCAL_ONLY)
+        return;
+
+    tm t{};
     if (!getLocalTime(&t)) {
-        if (!_valid) {
-            if (_syncState != SYNCING)
-                _syncState = ERROR;
-        }
+        if (_mode == NTP_ONLY)
+            _syncState = ERROR;
         return;
     }
 
-    // system time валидно
     _timeinfo = t;
-    _valid = true;
+    _valid    = true;
 
-    // ===== NTP confirmation =====
-    if (_syncState == SYNCING && !_ntpConfirmed) {
+    // подтверждение NTP
+    if ((_mode == AUTO || _mode == NTP_ONLY) &&
+        _syncState == SYNCING && !_ntpConfirmed) {
+
         _ntpConfirmed = true;
-        _source = NTP;
-        _syncState = SYNCED;
+        _syncState    = SYNCED;
+        _source       = NTP;
     }
 
-    // ===== DST AUTO =====
-    bool newDst = _dst.isDst(t);
+    // AUTO → пока нет NTP, считаем RTC
+    if (_mode == AUTO && !_ntpConfirmed) {
+        _source = RTC;
+    }
 
+    // DST
+    bool newDst = _dst.isDst(t);
     if (newDst != _dstActive) {
         _dstActive = newDst;
-
-        // Переустанавливаем timezone
         configTime(
             _gmtOffsetSec,
             _dstActive ? _daylightOffsetSec : 0,
             "pool.ntp.org"
         );
-
-        // Обновляем UI (часы пересчитаются)
         _uiVersion.bump(UiChannel::TIME);
     }
 
-    // ===== UI updates =====
-    if (t.tm_min != _lastMinute) {
+    // обновление UI
+    if (t.tm_min != _lastMinute || t.tm_sec != _lastSecond) {
         _lastMinute = t.tm_min;
-        _uiVersion.bump(UiChannel::TIME);
-    }
-
-    if (t.tm_sec != _lastSecond) {
         _lastSecond = t.tm_sec;
         _uiVersion.bump(UiChannel::TIME);
     }
 }
 
+// ------------------------------------------------------------
+// NTP
+// ------------------------------------------------------------
 void TimeService::syncNtp() {
     _syncState = SYNCING;
-    _ntpConfirmed = false;
 }
 
-bool TimeService::isValid() const {
-    return _valid;
-}
+// ------------------------------------------------------------
+// getters
+// ------------------------------------------------------------
+bool TimeService::isValid() const { return _valid; }
 
 int TimeService::hour()   const { return _timeinfo.tm_hour; }
 int TimeService::minute() const { return _timeinfo.tm_min;  }
 int TimeService::second() const { return _timeinfo.tm_sec;  }
 
-int TimeService::day()   const { return _timeinfo.tm_mday; }
-int TimeService::month() const { return _timeinfo.tm_mon + 1; }
-int TimeService::year()  const { return _timeinfo.tm_year + 1900; }
+int TimeService::day()    const { return _timeinfo.tm_mday; }
+int TimeService::month()  const { return _timeinfo.tm_mon + 1; }
+int TimeService::year()   const { return _timeinfo.tm_year + 1900; }
 
-TimeService::SyncState TimeService::syncState() const {
-    return _syncState;
-}
-
-TimeService::Source TimeService::source() const {
-    return _source;
-}
+TimeService::SyncState TimeService::syncState() const { return _syncState; }
+TimeService::Source    TimeService::source()    const { return _source; }
 
 bool TimeService::getTm(tm& out) const {
     if (!_valid) return false;

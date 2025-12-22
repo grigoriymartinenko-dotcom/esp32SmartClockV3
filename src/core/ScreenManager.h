@@ -9,12 +9,8 @@
 #include "ui/UiDebugOverlay.h"
 #include "services/LayoutService.h"
 #include "services/UiVersionService.h"
+#include "services/ThemeService.h"
 
-/*
- * ScreenManager
- * -------------
- * Управляет экранами и общими UI-элементами.
- */
 class ScreenManager {
 public:
     ScreenManager(
@@ -25,12 +21,12 @@ public:
         LayoutService& layout,
         UiSeparator& sepStatus,
         UiSeparator& sepBottom,
-        UiVersionService& uiVersion
+        UiVersionService& uiVersion,
+        ThemeService& themeService        // 🔹 ДОБАВИЛИ
     );
 
     void begin();
     void update();
-
     void set(Screen& screen);
 
     bool currentHasStatusBar() const;
@@ -38,16 +34,18 @@ public:
 
 private:
     void applyLayout();
+    void clearStatusArea();
 
 private:
-    Adafruit_ST7735* _tft;
-    Screen*          _current = nullptr;
-    Screen*          _prev    = nullptr;
+    Adafruit_ST7735*  _tft;
+    Screen*           _current = nullptr;
+    Screen*           _prev    = nullptr;
 
-    StatusBar*       _statusBar;
-    BottomBar*       _bottomBar;
-    LayoutService*   _layout;
-    UiSeparator*     _sepStatus;
-    UiSeparator*     _sepBottom;
+    StatusBar*        _statusBar;
+    BottomBar*        _bottomBar;
+    LayoutService*    _layout;
+    UiSeparator*      _sepStatus;
+    UiSeparator*      _sepBottom;
     UiVersionService* _uiVersion;
+    ThemeService*     _theme;   // 🔹 ХРАНИМ
 };

@@ -7,16 +7,15 @@
 /*
  * StatusBar
  * ---------
- * Верхняя статусная панель:
- *  - WiFi  (OFFLINE / CONNECTING / ONLINE / ERROR)
- *  - Date  (DD.MM.YYYY)
- *  - Time source: RTC / NTP
+ * Верхняя статусная панель (2 строки):
+ *
+ *  ● WiFi        DD.MM.YYYY
+ *  ● NTP         weekday
  *
  * ПРАВИЛА:
  *  - НЕТ таймеров
  *  - НЕТ millis()
  *  - Рисует ТОЛЬКО по dirty-флагу
- *  - Вся логика "когда обновлять" — СНАРУЖИ
  */
 class StatusBar {
 public:
@@ -35,21 +34,21 @@ public:
         TimeService& time
     );
 
-    // ===== реактивное обновление =====
     void update();
     void markDirty();
 
-    // ===== события статусов =====
     void setWiFiStatus(Status s);
-    void setNtpStatus(Status s);   // остаётся для CONNECTING / ERROR
+    void setNtpStatus(Status s);
 
 private:
     void draw();
 
-    // утилиты
-    const char* statusText(Status s) const;
-    uint16_t statusColor(Status s, const Theme& th) const;
-    const char* timeSourceText(TimeService::Source s) const;
+    // helpers
+    uint16_t statusDotColor(Status s, const Theme& th) const;
+    const char* weekdayUaLatFromTm(const tm& t) const;
+
+    // 🔹 НОВОЕ: рисование индикатора
+    void drawDot(int cx, int cy, uint16_t color);
 
 private:
     Adafruit_ST7735& _tft;

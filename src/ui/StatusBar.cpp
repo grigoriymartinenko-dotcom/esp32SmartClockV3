@@ -4,8 +4,11 @@
 /*
  * StatusBar.cpp
  * -------------
- * Полностью реактивная статусная панель.
- * Никаких таймеров, никаких задержек.
+ * Двухстрочный статусбар:
+ *  строка 1 — WiFi + дата
+ *  строка 2 — NTP  + день недели
+ *
+ * Индикаторы рисуются ГРАФИКОЙ, не текстом.
  */
 
 StatusBar::StatusBar(
@@ -18,9 +21,7 @@ StatusBar::StatusBar(
 , _time(time)
 {}
 
-// ------------------------------------------------------------
-// public API
-// ------------------------------------------------------------
+// --------------------------------------------------
 void StatusBar::markDirty() {
     _dirty = true;
 }
@@ -45,95 +46,100 @@ void StatusBar::update() {
     draw();
 }
 
-// ------------------------------------------------------------
-// draw
-// ------------------------------------------------------------
+// --------------------------------------------------
 void StatusBar::draw() {
 
     const Theme& th = _theme.current();
 
-    // --- reset GFX ---
     _tft.setFont(nullptr);
     _tft.setTextSize(1);
     _tft.setTextWrap(false);
 
-    // --- background ---
+    // фон
     _tft.fillRect(0, 0, _tft.width(), HEIGHT, th.bg);
 
-    // =========================================================
-    // LEFT: WiFi
-    // =========================================================
-    _tft.setTextColor(statusColor(_wifi, th), th.bg);
-    _tft.setCursor(2, 6);
-    _tft.print("WiFi:");
-    _tft.print(statusText(_wifi));
+    const int Y1 = 4;    // строка 1
+    const int Y2 = 14;   // строка 2
+    const int DOT_X = 4; // x центра кружка
+    const int DOT_R = 2; // радиус кружка
 
-    // =========================================================
-    // CENTER: DATE
-    // =========================================================
+    // =================================================
+    // LINE 1: ● WiFi        DD.MM.YYYY
+    // =================================================
+    drawDot(DOT_X, Y1 + 4, statusDotColor(_wifi, th));
+
+    _tft.setTextColor(th.muted, th.bg);
+    _tft.setCursor(10, Y1);
+    _tft.print("WiFi");
+
     if (_time.isValid()) {
-        char buf[12];
-        snprintf(
-            buf,
-            sizeof(buf),
-            "%02d.%02d.%04d",
-            _time.day(),
-            _time.month(),
-            _time.year()
-        );
+        tm t{};
+        if (_time.getTm(t)) {
+            char dateBuf[16];
+            snprintf(
+                dateBuf,
+                sizeof(dateBuf),
+                "%02d.%02d.%04d",
+                t.tm_mday,
+                t.tm_mon + 1,
+                t.tm_year + 1900
+            );
 
-        int16_t x1, y1;
-        uint16_t w, h;
-        _tft.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
-
-        _tft.setTextColor(th.textSecondary, th.bg);
-        _tft.setCursor((_tft.width() - w) / 2, 6);
-        _tft.print(buf);
+            int w = strlen(dateBuf) * 6;
+            _tft.setCursor(_tft.width() - w - 2, Y1);
+            _tft.print(dateBuf);
+        }
     }
 
-    // =========================================================
-    // RIGHT: TIME SOURCE (RTC / NTP)
-    // =========================================================
-    TimeService::Source src = _time.source();
+    // =================================================
+    // LINE 2: ● NTP         weekday
+    // =================================================
+    drawDot(DOT_X, Y2 + 4, statusDotColor(_ntp, th));
 
-    uint16_t col =
-        (src == TimeService::NTP) ? th.textPrimary :
-        (src == TimeService::RTC) ? th.textSecondary :
-                                    th.muted;
+    _tft.setTextColor(th.muted, th.bg);
+    _tft.setCursor(10, Y2);
+    _tft.print(
+        (_time.source() == TimeService::NTP) ? "NTP" :
+        (_time.source() == TimeService::RTC) ? "RTC" : "---"
+    );
 
-    _tft.setTextColor(col, th.bg);
-    _tft.setCursor(_tft.width() - 28, 6);
-    _tft.print(timeSourceText(src));
+    if (_time.isValid()) {
+        tm t{};
+        if (_time.getTm(t)) {
+            const char* wd = weekdayUaLatFromTm(t);
+            int w = strlen(wd) * 6;
+            _tft.setCursor(_tft.width() - w - 2, Y2);
+            _tft.print(wd);
+        }
+    }
 }
 
-// ------------------------------------------------------------
+// --------------------------------------------------
 // helpers
-// ------------------------------------------------------------
-const char* StatusBar::statusText(Status s) const {
+// --------------------------------------------------
+void StatusBar::drawDot(int cx, int cy, uint16_t color) {
+    _tft.fillCircle(cx, cy, 2, color);
+}
+
+uint16_t StatusBar::statusDotColor(Status s, const Theme& th) const {
     switch (s) {
-        case ONLINE:     return "+";
-        case CONNECTING: return "*";
-        case ERROR:      return "!";
+        case ONLINE:     return th.textSecondary; // 🟢 OK
+        case CONNECTING: return th.accent;        // 🔵 процесс
+        case ERROR:      return th.error;         // 🔴 ошибка
         case OFFLINE:
-        default:         return "-";
+        default:         return th.muted;         // ⚪ нет
     }
 }
 
-uint16_t StatusBar::statusColor(Status s, const Theme& th) const {
-    switch (s) {
-        case ERROR:      return ST7735_RED;
-        case CONNECTING: return th.accent;
-        case ONLINE:     return th.textPrimary;
-        case OFFLINE:
-        default:         return th.textSecondary;
-    }
-}
-
-const char* StatusBar::timeSourceText(TimeService::Source s) const {
-    switch (s) {
-        case TimeService::RTC: return "RTC";
-        case TimeService::NTP: return "NTP";
-        case TimeService::NONE:
-        default:               return "---";
+const char* StatusBar::weekdayUaLatFromTm(const tm& t) const {
+    switch (t.tm_wday) {
+        case 1: return "ponedilok";
+        case 2: return "vivtorok";
+        case 3: return "sereda";
+        case 4: return "chetver";
+        case 5: return "piatnytsia";
+        case 6: return "subota";
+        case 0: return "nedilia";
+        default:return "---";
     }
 }

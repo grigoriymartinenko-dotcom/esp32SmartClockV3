@@ -1,6 +1,4 @@
 #include "core/ScreenManager.h"
-#include "screens/SettingsScreen.h"
-#include "screens/ClockScreen.h"
 
 ScreenManager::ScreenManager(
     Adafruit_ST7735& tft,
@@ -10,7 +8,8 @@ ScreenManager::ScreenManager(
     LayoutService& layout,
     UiSeparator& sepStatus,
     UiSeparator& sepBottom,
-    UiVersionService& uiVersion
+    UiVersionService& uiVersion,
+    ThemeService& themeService
 )
 : _tft(&tft)
 , _current(&initial)
@@ -20,19 +19,39 @@ ScreenManager::ScreenManager(
 , _sepStatus(&sepStatus)
 , _sepBottom(&sepBottom)
 , _uiVersion(&uiVersion)
+, _theme(&themeService)
 {}
+
+// ------------------------------------------------------------
+void ScreenManager::clearStatusArea() {
+    if (!_tft || !_layout || !_theme) return;
+
+    const Theme& th = _theme->current();
+
+    const int h = _layout->statusY() + _layout->statusH() + 2;
+
+    _tft->fillRect(
+        0,
+        0,
+        _tft->width(),
+        h,
+        th.bg
+    );
+}
 
 void ScreenManager::applyLayout() {
 
-    // Верхний разделитель (под StatusBar)
-    _sepStatus->setY(_layout->sepStatusY());
+    if (_current && _current->hasStatusBar()) {
+        _sepStatus->setY(_layout->sepStatusY());
+    } else {
+        _sepStatus->setY(-1);
+    }
     _sepStatus->markDirty();
 
-    // Нижний разделитель существует ТОЛЬКО если BottomBar включён на текущем экране
     if (_current && _current->hasBottomBar()) {
         _sepBottom->setY(_layout->sepBottomY());
     } else {
-        _sepBottom->setY(-1); // скрываем
+        _sepBottom->setY(-1);
     }
     _sepBottom->markDirty();
 }
@@ -40,15 +59,16 @@ void ScreenManager::applyLayout() {
 void ScreenManager::begin() {
     if (!_current) return;
 
-    // Layout зависит от того, нужен ли BottomBar
     _layout->setHasBottomBar(_current->hasBottomBar());
     applyLayout();
 
-    // Экран сам рисует свою область
     _current->begin();
 
-    // Общие UI элементы
-    _statusBar->markDirty();
+    if (_current->hasStatusBar()) {
+        _statusBar->markDirty();
+    } else {
+        clearStatusArea();
+    }
 
     _bottomBar->setVisible(_current->hasBottomBar());
     _bottomBar->markDirty();
@@ -59,54 +79,40 @@ void ScreenManager::set(Screen& screen) {
     _prev = _current;
     _current = &screen;
 
-    // 🔥 Settings → Clock → запускаем fade через SCREEN version
-    // (пример: возврат со Settings, где статусбара нет, на экран со статусбаром)
-    if (_prev && _current) {
-        if (_prev->hasStatusBar() == false && _current->hasStatusBar() == true) {
-            _uiVersion->bump(UiChannel::SCREEN);
-        }
+    if (_prev && !_prev->hasStatusBar() && _current->hasStatusBar()) {
+        _uiVersion->bump(UiChannel::SCREEN);
     }
 
-    // Layout/разделители должны соответствовать новому экрану
     _layout->setHasBottomBar(_current->hasBottomBar());
     applyLayout();
 
-    // Новый экран рисует себя с нуля в begin()
     _current->begin();
 
-    // Общие UI элементы
-    _statusBar->markDirty();
+    if (_current->hasStatusBar()) {
+        _statusBar->markDirty();
+    } else {
+        clearStatusArea();
+    }
 
     _bottomBar->setVisible(_current->hasBottomBar());
     _bottomBar->markDirty();
 }
 
 void ScreenManager::update() {
-    // =========================================================
-    // ЕДИНСТВЕННАЯ точка отрисовки всего UI.
-    // Это важно: иначе появляются двойные update(), мерцания и хаос.
-    // =========================================================
 
-    // 1) Активный экран
     if (_current) {
         _current->update();
     }
 
-    // 2) StatusBar (верх)
-    _statusBar->update();
+    if (_current && _current->hasStatusBar()) {
+        _statusBar->update();
+    }
 
-    // 3) BottomBar (низ)
-    // ВАЖНО:
-    // Даже если BottomBar скрыт, update() нужен, чтобы он смог
-    // ОДИН раз стереть свою область при переходе (см. BottomBar::clear()).
     _bottomBar->update();
 
-    // 4) Разделители (верх/низ)
-    // Они живут отдельно от экранов и должны обновляться централизованно.
     _sepStatus->update();
     _sepBottom->update();
 
-    // 5) Debug overlay
     if (UiDebugOverlay::isEnabled()) {
         UiDebugOverlay::draw(*_tft);
     }
