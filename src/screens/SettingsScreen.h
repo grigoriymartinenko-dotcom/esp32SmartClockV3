@@ -40,6 +40,7 @@ public:
     void clearExitRequest();
 
 private:
+    // ===== UI STATE =====
     enum class Level : uint8_t {
         ROOT,
         NIGHT,
@@ -51,28 +52,23 @@ private:
         EDIT
     };
 
-    // ===== Night =====
-    enum class NightField : uint8_t {
-        MODE,
-        START,
-        END
-    };
-
-    enum class TimePart : uint8_t {
-        HH,
-        MM
-    };
-
-    // ===== Timezone =====
     enum class TzField : uint8_t {
         ZONE,
         DST
     };
 
+    enum class HintBtn : uint8_t {
+        NONE,
+        LEFT,
+        RIGHT,
+        OK,
+        BACK
+    };
+
     struct TzItem {
         const char* name;
         long gmtOffset;
-        int  dstOffset;   // обычно 3600
+        int  dstOffset;
     };
 
     struct MenuItem {
@@ -81,11 +77,14 @@ private:
     };
 
 private:
+    // ===== DRAW =====
     void redrawAll();
     void drawRoot();
     void drawNight();
     void drawTimezone();
+    void drawButtonHints();
 
+    // ===== NAV / EDIT =====
     void enterSubmenu(Level lvl);
     void exitSubmenu(bool apply);
 
@@ -101,6 +100,7 @@ private:
     Adafruit_ST7735&  _tft;
     LayoutService&    _layout;
     ButtonBar         _bar;
+
     NightService&     _night;
     TimeService&      _time;
     UiVersionService& _ui;
@@ -113,33 +113,26 @@ private:
 
     int _selected = 0;
 
-    static constexpr MenuItem MENU[] = {
-        { "Wi-Fi",     Level::ROOT     },
-        { "Timezone",  Level::TIMEZONE },
-        { "Night mode",Level::NIGHT    },
-        { "About",     Level::ROOT     }
-    };
-
-    // ===== Night =====
-    NightField _nightField = NightField::MODE;
-    TimePart   _timePart   = TimePart::HH;
-
-    NightService::Mode _tmpMode;
-    int _tmpStartMin = 0;
-    int _tmpEndMin   = 0;
-
-    NightService::Mode _bakMode;
-    int _bakStartMin;
-    int _bakEndMin;
+    // ===== Button highlight =====
+    HintBtn  _pressedBtn = HintBtn::NONE;
+    uint8_t  _hintFlash  = 0;        // сколько кадров держать подсветку
 
     // ===== Timezone =====
     TzField _tzField = TzField::ZONE;
 
-    int  _tzIndex = 0;
-    int  _bakTzIndex = 0;
+    int _tzIndex    = 0;
+    int _bakTzIndex = 0;
 
-    bool _dstAuto = true;
-    bool _bakDstAuto = true;
+    // 0=AUTO, 1=ON, 2=OFF
+    int _dstAuto    = 0;
+    int _bakDstAuto = 0;
+
+    static constexpr MenuItem MENU[] = {
+        { "Wi-Fi",      Level::ROOT     },
+        { "Timezone",   Level::TIMEZONE },
+        { "Night mode", Level::NIGHT    },
+        { "About",      Level::ROOT     }
+    };
 
     static constexpr TzItem TZ_LIST[] = {
         { "UTC",       0,        3600 },
@@ -150,4 +143,8 @@ private:
         { "New York", -5*3600,   3600 },
         { "Tokyo",     9*3600,   0    }
     };
+
+    // ===== Night =====
+    NightService::Mode _tmpMode;
+    NightService::Mode _bakMode;
 };

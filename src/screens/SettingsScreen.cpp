@@ -40,9 +40,8 @@ void SettingsScreen::begin() {
     _mode  = UiMode::NAV;
     _dirty = true;
 
-    _bar.setVisible(true);
-    _bar.setActions(true, true, true, true);
-    _bar.markDirty();
+    // ButtonBar скрываем — он рисует дефолтные подписи "<- OK -> Back"
+    _bar.setVisible(false);
 }
 
 // ============================================================================
@@ -50,48 +49,56 @@ void SettingsScreen::begin() {
 // ============================================================================
 void SettingsScreen::update() {
     if (_dirty) {
+        _dirty = false;   // ВАЖНО: сброс ДО redraw
         redrawAll();
-        _dirty = false;
     }
-    _bar.update();
 }
 
 void SettingsScreen::onThemeChanged() {
-    _bar.markDirty();
     _dirty = true;
 }
 
 // ============================================================================
-// BUTTONS — NORMAL UX
+// BUTTONS (фиксируем кнопку + запускаем мигание)
 // ============================================================================
 void SettingsScreen::onShortLeft() {
+    _pressedBtn = HintBtn::LEFT;
+    _hintFlash  = 3;
+
     if (_mode == UiMode::NAV) navLeft();
     else                      editDec();
 }
 
 void SettingsScreen::onShortRight() {
+    _pressedBtn = HintBtn::RIGHT;
+    _hintFlash  = 3;
+
     if (_mode == UiMode::NAV) navRight();
     else                      editInc();
 }
 
 void SettingsScreen::onShortOk() {
-    // ===== ROOT: вход в подменю =====
+    _pressedBtn = HintBtn::OK;
+    _hintFlash  = 3;
+
     if (_mode == UiMode::NAV && _level == Level::ROOT) {
         enterSubmenu(MENU[_selected].target);
         return;
     }
 
-    // ===== SUBMENU =====
     if (_mode == UiMode::NAV) {
         enterEdit();
     } else {
-        exitEdit(true);   // APPLY
+        exitEdit(true);
     }
 }
 
 void SettingsScreen::onShortBack() {
+    _pressedBtn = HintBtn::BACK;
+    _hintFlash  = 3;
+
     if (_mode == UiMode::EDIT) {
-        exitEdit(false);  // CANCEL
+        exitEdit(false);
         return;
     }
 
@@ -121,31 +128,33 @@ void SettingsScreen::clearExitRequest() {
 // ============================================================================
 void SettingsScreen::navLeft() {
     if (_level == Level::ROOT) {
-        const int n = sizeof(MENU) / sizeof(MENU[0]);
+        int n = sizeof(MENU) / sizeof(MENU[0]);
         _selected = (_selected + n - 1) % n;
         _dirty = true;
         return;
     }
 
     if (_level == Level::TIMEZONE) {
-        _tzField = (_tzField == TzField::ZONE) ? TzField::DST : TzField::ZONE;
+        _tzField = (_tzField == TzField::ZONE)
+            ? TzField::DST
+            : TzField::ZONE;
         _dirty = true;
-        return;
     }
 }
 
 void SettingsScreen::navRight() {
     if (_level == Level::ROOT) {
-        const int n = sizeof(MENU) / sizeof(MENU[0]);
+        int n = sizeof(MENU) / sizeof(MENU[0]);
         _selected = (_selected + 1) % n;
         _dirty = true;
         return;
     }
 
     if (_level == Level::TIMEZONE) {
-        _tzField = (_tzField == TzField::DST) ? TzField::ZONE : TzField::DST;
+        _tzField = (_tzField == TzField::DST)
+            ? TzField::ZONE
+            : TzField::DST;
         _dirty = true;
-        return;
     }
 }
 
@@ -193,7 +202,7 @@ void SettingsScreen::editInc() {
             int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
             _tzIndex = (_tzIndex + 1) % n;
         } else {
-            _dstAuto = (_dstAuto + 1) % 3;   // AUTO → ON → OFF
+            _dstAuto = (_dstAuto + 1) % 3;
         }
         _dirty = true;
         return;
@@ -241,7 +250,7 @@ void SettingsScreen::enterSubmenu(Level lvl) {
         long gmt = prefs.tzGmtOffset();
         int  dst = prefs.tzDstOffset();
 
-        _dstAuto = (dst == 0) ? 2 : 0; // OFF : AUTO
+        _dstAuto = (dst == 0) ? 2 : 0;
         _bakDstAuto = _dstAuto;
 
         int n = sizeof(TZ_LIST) / sizeof(TZ_LIST[0]);
@@ -251,6 +260,7 @@ void SettingsScreen::enterSubmenu(Level lvl) {
                 break;
             }
         }
+
         _bakTzIndex = _tzIndex;
         _tzField = TzField::ZONE;
     }
@@ -267,11 +277,7 @@ void SettingsScreen::exitSubmenu(bool apply) {
 
     if (_level == Level::TIMEZONE && apply) {
         const TzItem& tz = TZ_LIST[_tzIndex];
-
-        int dstOffset = 0;
-        if (_dstAuto == 0 || _dstAuto == 1) {
-            dstOffset = tz.dstOffset;
-        }
+        int dstOffset = (_dstAuto == 2) ? 0 : tz.dstOffset;
 
         prefs.setTimezone(tz.gmtOffset, dstOffset);
         prefs.save();
@@ -281,7 +287,6 @@ void SettingsScreen::exitSubmenu(bool apply) {
     if (_level == Level::NIGHT && apply) {
         _night.setMode(_tmpMode);
 
-        // ===== ЯВНЫЙ MAPPING =====
         NightModePref pref =
             (_tmpMode == NightService::Mode::AUTO) ? NightModePref::AUTO :
             (_tmpMode == NightService::Mode::ON)   ? NightModePref::ON
@@ -301,15 +306,35 @@ void SettingsScreen::exitSubmenu(bool apply) {
 // ============================================================================
 void SettingsScreen::redrawAll() {
     const Theme& th = theme();
-    _tft.fillScreen(th.bg);
 
-    if (_level == Level::ROOT)       drawRoot();
-    else if (_level == Level::NIGHT) drawNight();
-    else                             drawTimezone();
+    // Основной экран перерисовываем ТОЛЬКО если это не кадр мигания
+    if (_hintFlash == 0) {
+        _tft.fillRect(
+            0,
+            0,
+            _tft.width(),
+            _layout.buttonBarY(),
+            th.bg
+        );
 
-    _bar.markDirty();
+        if (_level == Level::ROOT)       drawRoot();
+        else if (_level == Level::NIGHT) drawNight();
+        else                             drawTimezone();
+    }
+
+    // Подсказки кнопок — всегда
+    drawButtonHints();
+
+    // 2–3 кадра мигания
+    if (_hintFlash > 0) {
+        _hintFlash--;
+        _dirty = true;
+    }
 }
 
+// ============================================================================
+// ROOT
+// ============================================================================
 void SettingsScreen::drawRoot() {
     const Theme& th = theme();
 
@@ -320,19 +345,26 @@ void SettingsScreen::drawRoot() {
 
     _tft.setTextSize(1);
 
-    const int top = 36;
-    const int bottom = _layout.buttonBarY();
-    const int count = sizeof(MENU) / sizeof(MENU[0]);
-    const int rowH = (bottom - top) / count;
+    int top = 36;
+    int bottom = _layout.buttonBarY();
+    int count = sizeof(MENU) / sizeof(MENU[0]);
+    int rowH = (bottom - top) / count;
 
     for (int i = 0; i < count; i++) {
-        uint16_t color = (i == _selected) ? th.accent : th.textPrimary;
+        bool sel = (i == _selected);
+        uint16_t color = sel ? th.accent : th.textPrimary;
+
         _tft.setTextColor(color, th.bg);
         _tft.setCursor(12, top + i * rowH + 4);
+
+        _tft.print(sel ? "> " : "  ");
         _tft.print(MENU[i].label);
     }
 }
 
+// ============================================================================
+// NIGHT
+// ============================================================================
 void SettingsScreen::drawNight() {
     const Theme& th = theme();
 
@@ -354,6 +386,9 @@ void SettingsScreen::drawNight() {
     _tft.print(txt);
 }
 
+// ============================================================================
+// TIMEZONE
+// ============================================================================
 void SettingsScreen::drawTimezone() {
     const Theme& th = theme();
 
@@ -386,4 +421,57 @@ void SettingsScreen::drawTimezone() {
         (_dstAuto == 0) ? "AUTO" :
         (_dstAuto == 1) ? "ON"   : "OFF"
     );
+}
+
+// ============================================================================
+// BUTTON HINTS (мигание 2–3 кадра, без мигания экрана)
+// ============================================================================
+void SettingsScreen::drawButtonHints() {
+    const Theme& th = theme();
+    int y0 = _layout.buttonBarY();
+
+    // очищаем ТОЛЬКО область подсказок
+    _tft.fillRect(
+        0,
+        y0,
+        _tft.width(),
+        _tft.height() - y0,
+        th.bg
+    );
+
+    int y = y0 + 4;
+
+    _tft.setTextSize(1);
+    _tft.setCursor(4, y);
+
+    auto col = [&](HintBtn b) {
+        return (_hintFlash > 0 && _pressedBtn == b)
+            ? th.accent
+            : th.muted;
+    };
+
+    _tft.setTextColor(col(HintBtn::LEFT), th.bg);
+    _tft.print("< ");
+
+    _tft.setTextColor(col(HintBtn::RIGHT), th.bg);
+    _tft.print(">   ");
+
+    if (_level == Level::ROOT) {
+        _tft.setTextColor(col(HintBtn::OK), th.bg);
+        _tft.print("OK:Select   ");
+        _tft.setTextColor(col(HintBtn::BACK), th.bg);
+        _tft.print("BACK");
+    }
+    else if (_mode == UiMode::NAV) {
+        _tft.setTextColor(col(HintBtn::OK), th.bg);
+        _tft.print("OK:Edit     ");
+        _tft.setTextColor(col(HintBtn::BACK), th.bg);
+        _tft.print("BACK");
+    }
+    else {
+        _tft.setTextColor(col(HintBtn::OK), th.bg);
+        _tft.print("OK:Apply    ");
+        _tft.setTextColor(col(HintBtn::BACK), th.bg);
+        _tft.print("BACK:Cancel");
+    }
 }
