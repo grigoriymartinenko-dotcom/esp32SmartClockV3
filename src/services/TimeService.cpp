@@ -8,16 +8,16 @@ TimeService::TimeService(UiVersionService& uiVersion)
 }
 
 void TimeService::begin() {
-    // NTP стартует, но НЕ блокирует
+    // Стартуем NTP, но не блокируем систему
     syncNtp();
 }
 
 void TimeService::setTimezone(long gmtOffsetSec, int daylightOffsetSec) {
-    _gmtOffsetSec = gmtOffsetSec;
+    _gmtOffsetSec      = gmtOffsetSec;
     _daylightOffsetSec = daylightOffsetSec;
 
-    // задаём NTP серверы для системного времени
-    configTime(_gmtOffsetSec, _daylightOffsetSec, "pool.ntp.org");
+    // Первичная установка (DST пока 0 — пересчитается в update)
+    configTime(_gmtOffsetSec, 0, "pool.ntp.org");
 }
 
 void TimeService::setFromRtc(const tm& t) {
@@ -29,9 +29,9 @@ void TimeService::setFromRtc(const tm& t) {
     _lastSecond = t.tm_sec;
 
     // ==================================================
-    // 🔥 КЛЮЧЕВО:
-    // выставляем системное время ESP32 из RTC,
-    // чтобы getLocalTime() работал сразу, без ожидания NTP.
+    // ВАЖНО:
+    // выставляем system time ESP32,
+    // чтобы getLocalTime() сразу работал
     // ==================================================
     tm tmp = t;
     time_t epoch = mktime(&tmp);
@@ -52,40 +52,42 @@ void TimeService::update() {
 void TimeService::updateTime() {
     tm t;
     if (!getLocalTime(&t)) {
-        // если времени ещё нет вообще — помечаем ошибку/ожидание
         if (!_valid) {
-            // NTP ещё не пришёл, RTC мог не быть
-            if (_syncState == SYNCING) {
-                // остаёмся в SYNCING, это НЕ ошибка "навсегда"
-                // но если хочешь — можно таймером перевести в ERROR
-            } else {
+            if (_syncState != SYNCING)
                 _syncState = ERROR;
-            }
         }
         return;
     }
 
-    // системное время есть → обновляем кэш
+    // system time валидно
     _timeinfo = t;
     _valid = true;
 
-    // если NTP ещё не помечен как SYNCED — считаем что он пришёл
-    // (на практике getLocalTime начинает давать валидное время после SNTP)
-// системное время есть → обновляем кэш
-_timeinfo = t;
-_valid = true;
+    // ===== NTP confirmation =====
+    if (_syncState == SYNCING && !_ntpConfirmed) {
+        _ntpConfirmed = true;
+        _source = NTP;
+        _syncState = SYNCED;
+    }
 
-// ==========================================
-// 🔥 ВАЖНО:
-// если время пришло из RTC — source остаётся RTC
-// NTP подтверждаем ТОЛЬКО один раз
-// ==========================================
-if (_syncState == SYNCING && !_ntpConfirmed) {
-    // первый валидный ответ SNTP
-    _ntpConfirmed = true;
-    _source = NTP;
-    _syncState = SYNCED;
-}
+    // ===== DST AUTO =====
+    bool newDst = _dst.isDst(t);
+
+    if (newDst != _dstActive) {
+        _dstActive = newDst;
+
+        // Переустанавливаем timezone
+        configTime(
+            _gmtOffsetSec,
+            _dstActive ? _daylightOffsetSec : 0,
+            "pool.ntp.org"
+        );
+
+        // Обновляем UI (часы пересчитаются)
+        _uiVersion.bump(UiChannel::TIME);
+    }
+
+    // ===== UI updates =====
     if (t.tm_min != _lastMinute) {
         _lastMinute = t.tm_min;
         _uiVersion.bump(UiChannel::TIME);
@@ -93,7 +95,7 @@ if (_syncState == SYNCING && !_ntpConfirmed) {
 
     if (t.tm_sec != _lastSecond) {
         _lastSecond = t.tm_sec;
-        _uiVersion.bump(UiChannel::TIME); // blink/seconds
+        _uiVersion.bump(UiChannel::TIME);
     }
 }
 
@@ -106,13 +108,13 @@ bool TimeService::isValid() const {
     return _valid;
 }
 
-int TimeService::hour() const   { return _timeinfo.tm_hour; }
-int TimeService::minute() const { return _timeinfo.tm_min; }
-int TimeService::second() const { return _timeinfo.tm_sec; }
+int TimeService::hour()   const { return _timeinfo.tm_hour; }
+int TimeService::minute() const { return _timeinfo.tm_min;  }
+int TimeService::second() const { return _timeinfo.tm_sec;  }
 
-int TimeService::day() const   { return _timeinfo.tm_mday; }
+int TimeService::day()   const { return _timeinfo.tm_mday; }
 int TimeService::month() const { return _timeinfo.tm_mon + 1; }
-int TimeService::year() const  { return _timeinfo.tm_year + 1900; }
+int TimeService::year()  const { return _timeinfo.tm_year + 1900; }
 
 TimeService::SyncState TimeService::syncState() const {
     return _syncState;
@@ -127,4 +129,3 @@ bool TimeService::getTm(tm& out) const {
     out = _timeinfo;
     return true;
 }
-

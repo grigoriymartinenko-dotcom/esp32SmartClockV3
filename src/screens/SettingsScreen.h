@@ -64,10 +64,15 @@ private:
     };
 
     // ===== Timezone =====
+    enum class TzField : uint8_t {
+        ZONE,
+        DST
+    };
+
     struct TzItem {
         const char* name;
         long gmtOffset;
-        int  dstOffset;
+        int  dstOffset;   // обычно 3600
     };
 
     struct MenuItem {
@@ -76,7 +81,6 @@ private:
     };
 
 private:
-    // ===== Core =====
     void redrawAll();
     void drawRoot();
     void drawNight();
@@ -107,7 +111,6 @@ private:
     Level  _level = Level::ROOT;
     UiMode _mode  = UiMode::NAV;
 
-    // ===== ROOT =====
     int _selected = 0;
 
     static constexpr MenuItem MENU[] = {
@@ -117,7 +120,7 @@ private:
         { "About",     Level::ROOT     }
     };
 
-    // ===== Night state =====
+    // ===== Night =====
     NightField _nightField = NightField::MODE;
     TimePart   _timePart   = TimePart::HH;
 
@@ -129,17 +132,22 @@ private:
     int _bakStartMin;
     int _bakEndMin;
 
-    // ===== Timezone state =====
-    int _tzIndex = 0;
-    int _bakTzIndex = 0;
+    // ===== Timezone =====
+    TzField _tzField = TzField::ZONE;
+
+    int  _tzIndex = 0;
+    int  _bakTzIndex = 0;
+
+    bool _dstAuto = true;
+    bool _bakDstAuto = true;
 
     static constexpr TzItem TZ_LIST[] = {
-        { "UTC",       0,        0 },
-        { "Kyiv",      2*3600,   0 },
-        { "Berlin",    1*3600,   0 },
-        { "London",    0,        0 },
-        { "Istanbul",  3*3600,   0 },
-        { "New York", -5*3600,   0 },
-        { "Tokyo",     9*3600,   0 }
+        { "UTC",       0,        3600 },
+        { "Kyiv",      2*3600,   3600 },
+        { "Berlin",    1*3600,   3600 },
+        { "London",    0,        3600 },
+        { "Istanbul",  3*3600,   3600 },
+        { "New York", -5*3600,   3600 },
+        { "Tokyo",     9*3600,   0    }
     };
 };
