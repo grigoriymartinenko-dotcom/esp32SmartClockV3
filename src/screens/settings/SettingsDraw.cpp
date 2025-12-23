@@ -10,30 +10,24 @@
 extern PreferencesService prefs;
 
 // ============================================================================
-// small helpers (draw only)
+// helpers
 // ============================================================================
 static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
     int32_t s = sec;
     char sign = '+';
     if (s < 0) { sign = '-'; s = -s; }
-
-    int hh = (int)(s / 3600);
-    int mm = (int)((s % 3600) / 60);
-
-    snprintf(out, outSz, "%c%02d:%02d", sign, hh, mm);
+    snprintf(out, outSz, "%c%02d:%02d", sign, s / 3600, (s % 3600) / 60);
 }
 
 // ============================================================================
-// DRAW
+// REDRAW ALL
 // ============================================================================
 void SettingsScreen::redrawAll() {
     const Theme& th = theme();
 
-    int yStart = 0;
-    int h      = _layout.buttonBarY() - yStart;
-
+    int h = _layout.buttonBarY();
     if (_needFullClear || _lastDrawnLevel != _level) {
-        _tft.fillRect(0, yStart, _tft.width(), h, th.bg);
+        _tft.fillRect(0, 0, _tft.width(), h, th.bg);
         _needFullClear  = false;
         _lastDrawnLevel = _level;
     }
@@ -49,22 +43,22 @@ void SettingsScreen::redrawAll() {
 }
 
 // ============================================================================
-// ROOT
+// ROOT MENU
 // ============================================================================
 void SettingsScreen::drawRoot() {
     const Theme& th = theme();
 
     _tft.setTextSize(2);
+    _tft.setCursor(20, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(20, 8);
     _tft.print("SETTINGS");
 
     _tft.setTextSize(1);
 
-    int top    = 36;
+    int top = 36;
     int bottom = _layout.buttonBarY();
-    int count  = sizeof(MENU) / sizeof(MENU[0]);
-    int rowH   = (bottom - top) / count;
+    int count = sizeof(MENU) / sizeof(MENU[0]);
+    int rowH = (bottom - top) / count;
 
     for (int i = 0; i < count; i++) {
         int y = top + i * rowH;
@@ -72,7 +66,7 @@ void SettingsScreen::drawRoot() {
 
         bool sel = (i == _selected);
 
-        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(12, y + 4);
         _tft.print(sel ? "> " : "  ");
         _tft.print(MENU[i].label);
@@ -86,112 +80,83 @@ void SettingsScreen::drawTime() {
     const Theme& th = theme();
 
     _tft.setTextSize(2);
-    _tft.setCursor(40, 8);
+    _tft.setCursor(40, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Time");
 
-    int top = 40;
-    int rowH = 18;
+    _tft.setTextSize(1);
 
-    _tft.fillRect(0, top, _tft.width(), rowH, th.bg);
+    int y = 40;
+    _tft.fillRect(0, y, _tft.width(), 18, th.bg);
 
     bool sel = (_subSelected == 0);
-    _tft.setTextSize(1);
-    _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
-    _tft.setCursor(12, top + 4);
-    _tft.print(sel ? "> " : "  ");
 
+    _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+    _tft.setCursor(12, y + 4);
+    _tft.print(sel ? "> " : "  ");
     _tft.print("Source: ");
 
-    uint16_t valCol = (_mode == UiMode::EDIT && sel) ? th.error
-                                                     : (sel ? ST77XX_GREEN : th.textPrimary);
-    _tft.setTextColor(valCol, th.bg);
+    _tft.setTextColor(
+        (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
+        th.bg
+    );
 
-    const char* txt =
-        (_tmpTimeMode == TimeService::AUTO)      ? "AUTO"  :
-        (_tmpTimeMode == TimeService::RTC_ONLY) ? "RTC"   :
-        (_tmpTimeMode == TimeService::NTP_ONLY) ? "NTP"   :
-                                                   "LOCAL";
-
-    _tft.print(txt);
+    _tft.print(
+        _tmpTimeMode == TimeService::AUTO      ? "AUTO"  :
+        _tmpTimeMode == TimeService::RTC_ONLY ? "RTC"   :
+        _tmpTimeMode == TimeService::NTP_ONLY ? "NTP"   :
+                                                 "LOCAL"
+    );
 }
 
 // ============================================================================
-// NIGHT (3 items: Mode / Start / End)
+// NIGHT MODE
 // ============================================================================
 void SettingsScreen::drawNight() {
     const Theme& th = theme();
 
     _tft.setTextSize(2);
-    _tft.setCursor(24, 8);
+    _tft.setCursor(24, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Night mode");
 
+    _tft.setTextSize(1);
+
     int top = 40;
     int rowH = 18;
-
     char buf[8];
 
-    // --- Row 0: Mode ---
-    {
-        int y = top;
+    for (int i = 0; i < 3; i++) {
+        int y = top + i * rowH;
         _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
-        bool sel = (_subSelected == 0);
 
-        _tft.setTextSize(1);
-        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        bool sel = (_subSelected == i);
+
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(12, y + 4);
         _tft.print(sel ? "> " : "  ");
-        _tft.print("Mode: ");
 
-        uint16_t col =
-            (_mode == UiMode::EDIT && sel) ? th.error :
-            (sel ? ST77XX_GREEN : th.textPrimary);
+        if (i == 0) {
+            _tft.print("Mode: ");
+            _tft.setTextColor(
+                (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
+                th.bg
+            );
+            _tft.print(
+                _tmpMode == NightService::Mode::AUTO ? "AUTO" :
+                _tmpMode == NightService::Mode::ON   ? "ON"   : "OFF"
+            );
+        } else {
+            int v = (i == 1) ? _tmpNightStart : _tmpNightEnd;
+            snprintf(buf, sizeof(buf), "%02d:%02d", v / 60, v % 60);
 
-        _tft.setTextColor(col, th.bg);
-
-        _tft.print(
-            _tmpMode == NightService::Mode::AUTO ? "AUTO" :
-            _tmpMode == NightService::Mode::ON   ? "ON"   : "OFF"
-        );
-    }
-
-    // --- Row 1: Start ---
-    {
-        int y = top + rowH;
-        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
-        bool sel = (_subSelected == 1);
-
-        snprintf(buf, sizeof(buf), "%02d:%02d", _tmpNightStart / 60, _tmpNightStart % 60);
-
-        _tft.setTextSize(1);
-        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
-        _tft.setCursor(12, y + 4);
-        _tft.print(sel ? "> " : "  ");
-        _tft.print("Start: ");
-
-        uint16_t col = (_mode == UiMode::EDIT && sel) ? th.error : th.textPrimary;
-        _tft.setTextColor(col, th.bg);
-        _tft.print(buf);
-    }
-
-    // --- Row 2: End ---
-    {
-        int y = top + rowH * 2;
-        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
-        bool sel = (_subSelected == 2);
-
-        snprintf(buf, sizeof(buf), "%02d:%02d", _tmpNightEnd / 60, _tmpNightEnd % 60);
-
-        _tft.setTextSize(1);
-        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
-        _tft.setCursor(12, y + 4);
-        _tft.print(sel ? "> " : "  ");
-        _tft.print("End:   ");
-
-        uint16_t col = (_mode == UiMode::EDIT && sel) ? th.error : th.textPrimary;
-        _tft.setTextColor(col, th.bg);
-        _tft.print(buf);
+            _tft.print(i == 1 ? "Start: " : "End:   ");
+            _tft.setTextColor(
+                (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
+                th.bg
+            );
+            _tft.print(buf);
+        }
     }
 }
 
@@ -202,63 +167,38 @@ void SettingsScreen::drawTimezone() {
     const Theme& th = theme();
 
     _tft.setTextSize(2);
-    _tft.setCursor(18, 8);
+    _tft.setCursor(18, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Timezone");
+
+    _tft.setTextSize(1);
 
     int top = 40;
     int rowH = 18;
 
-    int32_t utcSec = (_mode == UiMode::EDIT) ? _tmpTzSec  : prefs.tzGmtOffset();
-    int32_t dstSec = (_mode == UiMode::EDIT) ? _tmpDstSec : prefs.tzDstOffset();
+    int32_t utc = (_mode == UiMode::EDIT) ? _tmpTzSec  : prefs.tzGmtOffset();
+    int32_t dst = (_mode == UiMode::EDIT) ? _tmpDstSec : prefs.tzDstOffset();
 
-    char utcBuf[8];
-    char dstBuf[8];
-    formatOffsetHM(utcSec, utcBuf, sizeof(utcBuf));
-    formatOffsetHM(dstSec, dstBuf, sizeof(dstBuf));
+    char ub[8], db[8];
+    formatOffsetHM(utc, ub, sizeof(ub));
+    formatOffsetHM(dst, db, sizeof(db));
 
-    // --- Row 0: UTC ---
-    {
-        int y = top + 0 * rowH;
+    for (int i = 0; i < 2; i++) {
+        int y = top + i * rowH;
         _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
 
-        bool sel = (_subSelected == 0);
+        bool sel = (_subSelected == i);
 
-        _tft.setTextSize(1);
-        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(12, y + 4);
         _tft.print(sel ? "> " : "  ");
-        _tft.print("UTC ");
+        _tft.print(i == 0 ? "UTC " : "DST ");
 
-        uint16_t valCol =
-            (_mode == UiMode::EDIT && sel)
-                ? th.error
-                : (sel ? ST77XX_GREEN : th.textPrimary);
-
-        _tft.setTextColor(valCol, th.bg);
-        _tft.print(utcBuf);
-    }
-
-    // --- Row 1: DST ---
-    {
-        int y = top + 1 * rowH;
-        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
-
-        bool sel = (_subSelected == 1);
-
-        _tft.setTextSize(1);
-        _tft.setTextColor(sel ? ST77XX_GREEN : th.textPrimary, th.bg);
-        _tft.setCursor(12, y + 4);
-        _tft.print(sel ? "> " : "  ");
-        _tft.print("DST ");
-
-        uint16_t valCol =
-            (_mode == UiMode::EDIT && sel)
-                ? th.error
-                : (sel ? ST77XX_GREEN : th.textPrimary);
-
-        _tft.setTextColor(valCol, th.bg);
-        _tft.print(dstBuf);
+        _tft.setTextColor(
+            (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
+            th.bg
+        );
+        _tft.print(i == 0 ? ub : db);
     }
 }
 
@@ -270,18 +210,19 @@ void SettingsScreen::drawButtonHints() {
     int y0 = _layout.buttonBarY();
 
     _tft.fillRect(0, y0, _tft.width(), _tft.height() - y0, th.bg);
-
     _tft.setTextSize(1);
     _tft.setCursor(4, y0 + 4);
 
     auto col = [&](HintBtn b) {
         return (_hintFlash > 0 && _pressedBtn == b)
-            ? ST77XX_GREEN
+            ? th.select
             : th.muted;
     };
 
-    _tft.setTextColor(col(HintBtn::LEFT),  th.bg); _tft.print("< ");
-    _tft.setTextColor(col(HintBtn::RIGHT), th.bg); _tft.print(">   ");
-    _tft.setTextColor(col(HintBtn::OK),    th.bg); _tft.print("OK   ");
-    _tft.setTextColor(col(HintBtn::BACK),  th.bg); _tft.print("BACK");
+    bool edit = (_mode == UiMode::EDIT);
+
+    _tft.setTextColor(col(HintBtn::LEFT),  th.bg);  _tft.print("< ");
+    _tft.setTextColor(col(HintBtn::RIGHT), th.bg);  _tft.print(">   ");
+    _tft.setTextColor(col(HintBtn::OK),    th.bg);  _tft.print(edit ? "OK+  " : "OK   ");
+    _tft.setTextColor(col(HintBtn::BACK),  th.bg);  _tft.print(edit ? "BACK+" : "BACK");
 }

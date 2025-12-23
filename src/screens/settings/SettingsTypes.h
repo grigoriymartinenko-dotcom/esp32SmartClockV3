@@ -4,31 +4,48 @@
 /*
  * SettingsTypes.h
  * ---------------
- * Типы экрана Settings вынесены отдельно:
- *  - Level / UiMode / HintBtn
- *  - MenuItem
+ * БАЗОВЫЕ ТИПЫ экрана Settings.
  *
- * Это уменьшает SettingsScreen.h и убирает шум.
+ * ЗАЧЕМ:
+ *  - уменьшить SettingsScreen.h
+ *  - убрать enum-ы и POD-структуры из логики экрана
+ *  - сделать типы переиспользуемыми
  *
- * ВАЖНО:
- *  - НЕ содержит никаких зависимостей от Arduino/Adafruit
- *  - Только POD-типы
+ * ПРАВИЛА:
+ *  - НИКАКОЙ логики
+ *  - НИКАКИХ Arduino / Adafruit зависимостей
+ *  - ТОЛЬКО POD-типы
  */
 
 namespace SettingsTypes {
 
+    /*
+     * Level
+     * -----
+     * Текущий уровень экрана Settings
+     */
     enum class Level : uint8_t {
-        ROOT,
-        NIGHT,
-        TIMEZONE,
-        TIME
+        ROOT,       // корневое меню
+        NIGHT,      // настройки ночного режима
+        TIMEZONE,   // таймзона / DST
+        TIME        // источник времени
     };
 
+    /*
+     * UiMode
+     * ------
+     * Режим взаимодействия
+     */
     enum class UiMode : uint8_t {
-        NAV,
-        EDIT
+        NAV,        // навигация
+        EDIT        // редактирование значения
     };
 
+    /*
+     * HintBtn
+     * -------
+     * Используется ТОЛЬКО для визуального фидбека кнопок
+     */
     enum class HintBtn : uint8_t {
         NONE,
         LEFT,
@@ -37,9 +54,14 @@ namespace SettingsTypes {
         BACK
     };
 
+    /*
+     * MenuItem
+     * --------
+     * Описание пункта корневого меню
+     */
     struct MenuItem {
         const char* label;
-        Level target;
+        Level       target;
     };
 
 } // namespace SettingsTypes
