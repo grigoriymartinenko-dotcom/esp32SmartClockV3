@@ -9,6 +9,8 @@
 #include "services/TimeService.h"
 #include "services/PreferencesService.h"
 
+#include "screens/settings/SettingsTypes.h"
+
 /*
  * SettingsScreen
  * --------------
@@ -22,9 +24,12 @@
  *  - без таймеров
  *  - реактивная перерисовка
  *
- * Архитектура (после рефакторинга):
- *  - SettingsScreen.cpp          → логика / nav / edit / state
- *  - settings/SettingsDraw.cpp   → ТОЛЬКО отрисовка (draw*)
+ * Архитектура:
+ *  - SettingsScreen.cpp          → кнопки + flow + submenu apply
+ *  - settings/SettingsDraw.cpp   → ТОЛЬКО draw*
+ *  - settings/SettingsNav.cpp    → ТОЛЬКО nav*
+ *  - settings/SettingsEdit.cpp   → ТОЛЬКО edit*
+ *  - settings/SettingsTypes.h    → типы/меню
  */
 
 class SettingsScreen : public Screen {
@@ -58,31 +63,11 @@ public:
     void clearExitRequest();
 
 private:
-    // ===== UI STATE =====
-    enum class Level : uint8_t {
-        ROOT,
-        NIGHT,
-        TIMEZONE,
-        TIME
-    };
-
-    enum class UiMode : uint8_t {
-        NAV,
-        EDIT
-    };
-
-    enum class HintBtn : uint8_t {
-        NONE,
-        LEFT,
-        RIGHT,
-        OK,
-        BACK
-    };
-
-    struct MenuItem {
-        const char* label;
-        Level target;
-    };
+    // ===== TYPES (aliases) =====
+    using Level   = SettingsTypes::Level;
+    using UiMode  = SettingsTypes::UiMode;
+    using HintBtn = SettingsTypes::HintBtn;
+    using MenuItem = SettingsTypes::MenuItem;
 
 private:
     // ===== DRAW (реализация в settings/SettingsDraw.cpp) =====
@@ -165,7 +150,6 @@ private:
     int32_t _tmpTzSec = 0;
     int32_t _bakTzSec = 0;
 
-    // ✅ DST edit-state теперь ВНУТРИ экрана (а не static в .cpp)
     int32_t _tmpDstSec = 0;
     int32_t _bakDstSec = 0;
 
