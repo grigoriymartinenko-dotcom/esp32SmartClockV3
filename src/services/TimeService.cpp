@@ -13,8 +13,9 @@ TimeService::TimeService(UiVersionService& uiVersion)
 // begin
 // ------------------------------------------------------------
 void TimeService::begin() {
-    _syncState = NOT_STARTED;
+    _syncState    = NOT_STARTED;
     _ntpConfirmed = false;
+    _rtcWritten   = false;
 
     if (_mode == AUTO || _mode == NTP_ONLY) {
         syncNtp();
@@ -35,18 +36,17 @@ void TimeService::setMode(Mode m) {
     if (_mode == m)
         return;
 
-    _mode = m;
-
+    _mode         = m;
     _syncState    = NOT_STARTED;
     _ntpConfirmed = false;
-    _rtcWritten   = false;   // 🔴 ВАЖНО
+    _rtcWritten   = false;
 
     if (_mode == AUTO || _mode == NTP_ONLY) {
         syncNtp();
     }
 
     if (_mode == LOCAL_ONLY) {
-        _source = NONE;
+        setSource(NONE);
     }
 
     _uiVersion.bump(UiChannel::TIME);
@@ -74,18 +74,17 @@ void TimeService::setFromRtc(const tm& t) {
 
     _timeinfo = t;
     _valid    = true;
+
     setSource(RTC);
 
     tm tmp = t;
     time_t epoch = mktime(&tmp);
     if (epoch > 0) {
         timeval tv{};
-        tv.tv_sec = epoch;
+        tv.tv_sec  = epoch;
         tv.tv_usec = 0;
         settimeofday(&tv, nullptr);
     }
-
-    _uiVersion.bump(UiChannel::TIME);
 }
 
 // ------------------------------------------------------------
@@ -98,39 +97,43 @@ void TimeService::updateTime() {
 
     tm t{};
     if (!getLocalTime(&t)) {
-        if (_mode == NTP_ONLY)
+        if (_mode == NTP_ONLY) {
             _syncState = ERROR;
+            _uiVersion.bump(UiChannel::TIME);
+        }
         return;
     }
 
     _timeinfo = t;
     _valid    = true;
 
-    // ===== SOURCE LOGIC (ЕДИНСТВЕННОЕ МЕСТО) =====
-    switch (_mode) {
-        case RTC_ONLY:
-            _source = RTC;
-            break;
-
-        case NTP_ONLY:
-            _source = NTP;
-            break;
-
-        case LOCAL_ONLY:
-            _source = NONE;
-            break;
-
-        case AUTO:
-            _source = _ntpConfirmed ? NTP : RTC;
-            break;
-    }
-
-    // ===== подтверждение NTP (ТОЛЬКО ДЛЯ AUTO / NTP_ONLY) =====
+    // ===== подтверждение NTP (ЕДИНСТВЕННЫЙ МОМЕНТ) =====
     if ((_mode == AUTO || _mode == NTP_ONLY) &&
         _syncState == SYNCING && !_ntpConfirmed) {
 
         _ntpConfirmed = true;
         _syncState    = SYNCED;
+
+        setSource(NTP);   // 🔥 ЯВНЫЙ RTC → NTP
+    }
+
+    // ===== SOURCE LOGIC =====
+    switch (_mode) {
+        case RTC_ONLY:
+            setSource(RTC);
+            break;
+
+        case NTP_ONLY:
+            setSource(NTP);
+            break;
+
+        case LOCAL_ONLY:
+            setSource(NONE);
+            break;
+
+        case AUTO:
+            setSource(_ntpConfirmed ? NTP : RTC);
+            break;
     }
 
     // ===== DST =====
@@ -158,6 +161,7 @@ void TimeService::updateTime() {
 // ------------------------------------------------------------
 void TimeService::syncNtp() {
     _syncState = SYNCING;
+    _uiVersion.bump(UiChannel::TIME); // 🔥 UX: R → R>
 }
 
 // ------------------------------------------------------------
@@ -168,9 +172,6 @@ void TimeService::setSource(Source s) {
         return;
 
     _source = s;
-
-    // 🔥 КЛЮЧЕВОЕ СОБЫТИЕ:
-    // UI обязан узнать, что источник сменился
     _uiVersion.bump(UiChannel::TIME);
 }
 
@@ -196,19 +197,16 @@ bool TimeService::getTm(tm& out) const {
     return true;
 }
 
+// ------------------------------------------------------------
+// RTC write policy
+// ------------------------------------------------------------
 bool TimeService::shouldWriteRtc() const {
-    // RTC обновляем ТОЛЬКО в AUTO
     if (_mode != AUTO)
         return false;
-
-    // только после подтверждённого NTP
     if (_syncState != SYNCED)
         return false;
-
-    // только один раз
     if (_rtcWritten)
         return false;
-
     return true;
 }
 

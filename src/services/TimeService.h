@@ -49,8 +49,8 @@ public:
     void update();
 
     // ===== RTC sync policy =====
-bool shouldWriteRtc() const;
-void markRtcWritten();
+    bool shouldWriteRtc() const;
+    void markRtcWritten();
 
     void setMode(Mode m);
     Mode mode() const;
@@ -80,8 +80,6 @@ private:
     void updateTime();
     void syncNtp();
 
-    bool _rtcWritten = false;
-
     // 🔹 ВАЖНО: централизованная установка источника
     void setSource(Source s);
 
@@ -94,6 +92,7 @@ private:
 
     bool _ntpConfirmed = false;
     bool _valid        = false;
+    bool _rtcWritten   = false;
 
     tm _timeinfo{};
 
