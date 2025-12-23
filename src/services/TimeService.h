@@ -1,23 +1,33 @@
 #pragma once
+
 #include <time.h>
 #include <stdint.h>
 
 #include "services/UiVersionService.h"
+#include "services/DstService.h"
 
 /*
  * TimeService
  * -----------
- * Источник времени:
- *  RTC → первичный
- *  NTP → вторичный (апдейт)
+ * Единый источник времени для всей системы.
  *
- * ВАЖНО:
- *  - После setFromRtc() мы выставляем системное время ESP32 (settimeofday),
- *    чтобы getLocalTime() работал сразу, без ожидания NTP.
+ * Режимы:
+ *  - RTC_ONLY   — использовать только RTC
+ *  - NTP_ONLY   — использовать только NTP
+ *  - LOCAL_ONLY — время не обновляется (ручное / system)
+ *  - AUTO       — RTC → затем уточнение NTP
  */
-
 class TimeService {
 public:
+    // ===== режим источника времени =====
+    enum Mode {
+        RTC_ONLY,
+        NTP_ONLY,
+        LOCAL_ONLY,
+        AUTO
+    };
+
+    // ===== состояние синхронизации =====
     enum SyncState {
         NOT_STARTED,
         SYNCING,
@@ -25,6 +35,7 @@ public:
         ERROR
     };
 
+    // ===== текущий источник =====
     enum Source {
         NONE,
         RTC,
@@ -33,49 +44,61 @@ public:
 
     explicit TimeService(UiVersionService& uiVersion);
 
+    // ===== lifecycle =====
     void begin();
     void update();
 
+    // ===== mode =====
+    void setMode(Mode m);
+    Mode mode() const;
+
+    // ===== timezone / DST =====
     void setTimezone(long gmtOffsetSec, int daylightOffsetSec);
 
     // ===== RTC =====
     void setFromRtc(const tm& t);
 
-    // ===== TIME =====
+    // ===== time access =====
+    bool isValid() const;
+
     int hour()   const;
     int minute() const;
     int second() const;
-
-    // ===== DATE =====
-    bool isValid() const;
 
     int day()   const;
     int month() const;
     int year()  const;
 
     SyncState syncState() const;
-    Source source() const;
+    Source    source()    const;
 
-    // экспорт текущего времени (для RTC)
+    // ===== export =====
     bool getTm(tm& out) const;
 
+    bool isDstActive() const { return _dstActive; }
+
 private:
-    bool _ntpConfirmed = false;   // 🔥 реальный приход NTP
     void updateTime();
     void syncNtp();
 
 private:
     UiVersionService& _uiVersion;
 
-    tm _timeinfo{};
-    bool _valid = false;
-    Source _source = NONE;
+    Mode      _mode       = AUTO;
+    SyncState _syncState  = NOT_STARTED;
+    Source    _source     = NONE;
 
-    SyncState _syncState = NOT_STARTED;
+    bool _ntpConfirmed = false;
+    bool _valid        = false;
+
+    tm _timeinfo{};
 
     int _lastMinute = -1;
     int _lastSecond = -1;
 
-    long _gmtOffsetSec = 0;
+    long _gmtOffsetSec      = 0;
     int  _daylightOffsetSec = 0;
+
+    DstService _dst;
+    bool _dstActive = false;
 };

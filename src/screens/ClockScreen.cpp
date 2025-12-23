@@ -6,6 +6,23 @@
 static constexpr uint8_t FADE_STEPS = 5;
 
 // =====================================================
+// Настройка расположения времени (то, что ты хотел)
+//
+// Меняешь эти 2 числа — и HH:MM двигается.
+//  - TIME_SHIFT_Y < 0  -> вверх
+//  - TIME_SHIFT_Y > 0  -> вниз
+//  - TIME_SHIFT_X < 0  -> влево
+//  - TIME_SHIFT_X > 0  -> вправо
+//
+// ВАРИАНТЫ:
+//  A) рекомендую: TIME_SHIFT_Y = -6
+//  B) центр:      TIME_SHIFT_Y = 0
+//  C) выше:       TIME_SHIFT_Y = -12
+// =====================================================
+static constexpr int TIME_SHIFT_X = 0;
+static constexpr int TIME_SHIFT_Y = -6;   // ✅ Вариант A: чуть выше центра
+
+// =====================================================
 // RGB565 blend
 // =====================================================
 static uint16_t blend565(uint16_t bg, uint16_t fg, uint8_t a) {
@@ -48,6 +65,7 @@ ClockScreen::ClockScreen(
 // =====================================================
 void ClockScreen::begin() {
 
+    // Если экран сменился — запускаем fade (только HH:MM)
     uint32_t sv = uiVersion.version(UiChannel::SCREEN);
     if (sv != lastScreenV) {
         lastScreenV = sv;
@@ -55,6 +73,7 @@ void ClockScreen::begin() {
         fadeStep = 0;
     }
 
+    // Очищаем рабочую часть (ниже StatusBar) фоном темы
     tft.fillRect(
         0,
         layout.statusY() + layout.statusH(),
@@ -72,11 +91,13 @@ void ClockScreen::begin() {
 // =====================================================
 void ClockScreen::update() {
 
-    // ===== FADE =====
+    // ===== FADE (только HH:MM) =====
+    // Важно: seconds всё равно будут обновляться через TIME channel,
+    // поэтому мы специально синхронизируем lastTimeV внутри fade.
     if (fadeActive) {
         drawTime(true);
 
-        // 🔥 КЛЮЧЕВО: не теряем обновления секунд
+        // чтобы не пропустить реальное изменение времени пока идёт fade
         lastTimeV = uiVersion.version(UiChannel::TIME);
 
         fadeStep++;
@@ -111,17 +132,20 @@ void ClockScreen::drawTime(bool force) {
     if (!time.isValid())
         return;
 
+    // ===== 1) Цвет HH:MM с fade =====
+    // Fade применяется ТОЛЬКО к HH:MM, секунды не "тухнут".
     uint8_t a = 255;
     if (fadeActive) {
         uint16_t t = (uint16_t)fadeStep * 255 / FADE_STEPS;
         a = (t * t) / 255;
     }
 
-    uint16_t timeColor = fadeActive
+    const uint16_t timeColor = fadeActive
         ? blend565(theme().bg, theme().textPrimary, a)
         : theme().textPrimary;
 
-    uint16_t secColor = theme().muted;
+    // секунды — спокойные, вторичные
+    const uint16_t secColor = theme().muted;
 
     tft.setFont(nullptr);
     tft.setTextWrap(false);
@@ -129,27 +153,48 @@ void ClockScreen::drawTime(bool force) {
     const int h = time.hour();
     const int m = time.minute();
     const int s = time.second();
+
+    // Ночью можно скрывать секунды (у тебя уже было так)
     const bool showSeconds = !night.isNight();
 
+    // ===== 2) Геометрия надписи HH:MM =====
+    // Это приблизительные метрики для setTextSize(3) и стандартного шрифта.
     const int DIGIT_W = 18;
     const int DIGIT_H = 24;
-    const int TIME_W  = 5 * DIGIT_W;
+    const int TIME_W  = 5 * DIGIT_W; // "HH:MM" = 5 символов
     const int TIME_H  = DIGIT_H;
 
+    // Safe-зона для часов (между линиями/панелями)
     const int safeY = layout.clockSafeY();
     const int safeH = layout.clockSafeH();
 
-    const int X = (tft.width() - TIME_W) / 2;
-    const int Y = safeY + (safeH - TIME_H) / 2;
+    // ===== 3) РАСПОЛОЖЕНИЕ HH:MM =====
+    // Тут ты и хотел "поменять расположение":
+    // мы считаем центр и добавляем сдвиги TIME_SHIFT_X/Y.
+    const int X0 = (tft.width() - TIME_W) / 2;
+    const int Y0 = safeY + (safeH - TIME_H) / 2;
 
-    constexpr int SEC_GAP = 12;
-    const int SEC_X = X + TIME_W + SEC_GAP;
-    const int SEC_Y = Y + 6;
+    const int X = X0 + TIME_SHIFT_X;
+    const int Y = Y0 + TIME_SHIFT_Y;
 
+    // ===== 4) РАСПОЛОЖЕНИЕ секунд =====
+    // Секунды ставим ПОД временем, под правым краем HH:MM.
+    // Так они не "дерутся" за внимание и не расширяют строку вправо.
+    const int SEC_W = 24;
+    const int SEC_H = 12;
+
+    const int SEC_X = X + TIME_W - SEC_W;   // под правым краем
+    const int SEC_Y = Y + TIME_H + 4;       // чуть ниже
+
+    // ===== 5) Очистка =====
+    // force = true при смене темы / входе / fade-кадрах
+    // тогда гарантированно очищаем зону HH:MM
     if (force) {
         tft.fillRect(X, Y, TIME_W, TIME_H, theme().bg);
     }
 
+    // ===== 6) Рисуем HH:MM =====
+    // Двоеточие мигает по версии TIME (как у тебя).
     const bool colonVisible =
         (uiVersion.version(UiChannel::TIME) % 2) == 0;
 
@@ -163,13 +208,18 @@ void ClockScreen::drawTime(bool force) {
         tft.printf("%02d %02d", h, m);
     }
 
+    // ===== 7) Рисуем секунды (локально) =====
+    // Важно: мы очищаем ТОЛЬКО прямоугольник секунд,
+    // чтобы весь экран не перемигивал.
     if (showSeconds) {
-        tft.fillRect(SEC_X, SEC_Y, 24, 12, theme().bg);
+        tft.fillRect(SEC_X, SEC_Y, SEC_W, SEC_H, theme().bg);
         tft.setTextSize(1);
         tft.setTextColor(secColor, theme().bg);
         tft.setCursor(SEC_X, SEC_Y);
         tft.printf("%02d", s);
     } else if (force) {
-        tft.fillRect(SEC_X, SEC_Y, 24, 12, theme().bg);
+        // если секунды скрыты — очищаем их область только при force,
+        // чтобы "хвост" не оставался.
+        tft.fillRect(SEC_X, SEC_Y, SEC_W, SEC_H, theme().bg);
     }
 }

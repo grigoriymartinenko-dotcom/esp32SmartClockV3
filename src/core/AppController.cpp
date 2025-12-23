@@ -4,13 +4,11 @@
 /*
  * AppController.cpp
  * -----------------
- * UX-контракт навигации и роутинга кнопок.
+ * ЕДИНЫЙ роутер кнопок.
  *
- * ВАЖНОЕ исправление для листания:
- *  - раньше SHORT LEFT на Forecast возвращал на Clock,
- *    из-за этого ForecastScreen.onShortLeft/onShortRight не вызывались.
- *  - теперь SHORT LEFT/RIGHT в Forecast идут ВНУТРЬ ForecastScreen (листание дней)
- *  - назад на Clock: LONG BACK
+ * ПРАВИЛО:
+ *  - AppController решает ТОЛЬКО куда идёт событие
+ *  - Экран решает, что оно значит
  */
 
 AppController::AppController(
@@ -50,7 +48,7 @@ void AppController::goSettings() {
 void AppController::handleEvent(const ButtonEvent& e) {
 
     // =========================================================
-    // 0) ГЛОБАЛЬНОЕ: LONG OK -> Settings отовсюду (кроме Settings)
+    // GLOBAL: LONG OK -> Settings (из любого экрана)
     // =========================================================
     if (e.type == ButtonEventType::LONG_PRESS &&
         e.id   == ButtonId::OK &&
@@ -61,7 +59,7 @@ void AppController::handleEvent(const ButtonEvent& e) {
     }
 
     // =========================================================
-    // 1) SETTINGS
+    // SETTINGS
     // =========================================================
     if (_active == ActiveScreen::SETTINGS) {
 
@@ -91,27 +89,24 @@ void AppController::handleEvent(const ButtonEvent& e) {
     }
 
     // =========================================================
-    // 2) CLOCK
+    // CLOCK
     // =========================================================
     if (_active == ActiveScreen::CLOCK) {
 
-        // SHORT RIGHT -> Forecast
         if (e.type == ButtonEventType::SHORT_PRESS &&
             e.id   == ButtonId::RIGHT) {
 
             goForecast();
-            return;
         }
 
         return;
     }
 
     // =========================================================
-    // 3) FORECAST
+    // FORECAST
     // =========================================================
     if (_active == ActiveScreen::FORECAST) {
 
-        // SHORT LEFT/RIGHT -> листание дней ВНУТРИ ForecastScreen
         if (e.type == ButtonEventType::SHORT_PRESS) {
             if (e.id == ButtonId::LEFT) {
                 _forecast.onShortLeft();
@@ -123,7 +118,6 @@ void AppController::handleEvent(const ButtonEvent& e) {
             }
         }
 
-        // LONG BACK -> назад на Clock (универсальный "выход")
         if (e.type == ButtonEventType::LONG_PRESS &&
             e.id   == ButtonId::BACK) {
 

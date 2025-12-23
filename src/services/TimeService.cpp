@@ -1,38 +1,82 @@
 #include "services/TimeService.h"
 #include <Arduino.h>
-#include <sys/time.h>   // settimeofday
+#include <sys/time.h>
 
+// ------------------------------------------------------------
+// ctor
+// ------------------------------------------------------------
 TimeService::TimeService(UiVersionService& uiVersion)
     : _uiVersion(uiVersion)
-{
-}
+{}
 
+// ------------------------------------------------------------
+// begin
+// ------------------------------------------------------------
 void TimeService::begin() {
-    // NTP стартует, но НЕ блокирует
-    syncNtp();
+    _syncState = NOT_STARTED;
+    _ntpConfirmed = false;
+
+    if (_mode == AUTO || _mode == NTP_ONLY) {
+        syncNtp();
+    }
 }
 
+// ------------------------------------------------------------
+// update
+// ------------------------------------------------------------
+void TimeService::update() {
+    updateTime();
+}
+
+// ------------------------------------------------------------
+// MODE
+// ------------------------------------------------------------
+void TimeService::setMode(Mode m) {
+    if (_mode == m)
+        return;
+
+    _mode = m;
+
+    _syncState    = NOT_STARTED;
+    _ntpConfirmed = false;
+
+    if (_mode == AUTO || _mode == NTP_ONLY) {
+        syncNtp();
+    }
+
+    if (_mode == LOCAL_ONLY) {
+        _source = NONE;
+    }
+
+    _uiVersion.bump(UiChannel::TIME);
+}
+
+TimeService::Mode TimeService::mode() const {
+    return _mode;
+}
+
+// ------------------------------------------------------------
+// TIMEZONE
+// ------------------------------------------------------------
 void TimeService::setTimezone(long gmtOffsetSec, int daylightOffsetSec) {
-    _gmtOffsetSec = gmtOffsetSec;
+    _gmtOffsetSec      = gmtOffsetSec;
     _daylightOffsetSec = daylightOffsetSec;
 
-    // задаём NTP серверы для системного времени
-    configTime(_gmtOffsetSec, _daylightOffsetSec, "pool.ntp.org");
+    // DST управляем вручную
+    configTime(_gmtOffsetSec, 0, "pool.ntp.org");
 }
 
+// ------------------------------------------------------------
+// RTC
+// ------------------------------------------------------------
 void TimeService::setFromRtc(const tm& t) {
+    if (_mode == NTP_ONLY || _mode == LOCAL_ONLY)
+        return;
+
     _timeinfo = t;
-    _valid = true;
-    _source = RTC;
+    _valid    = true;
+    _source   = RTC;
 
-    _lastMinute = t.tm_min;
-    _lastSecond = t.tm_sec;
-
-    // ==================================================
-    // 🔥 КЛЮЧЕВО:
-    // выставляем системное время ESP32 из RTC,
-    // чтобы getLocalTime() работал сразу, без ожидания NTP.
-    // ==================================================
     tm tmp = t;
     time_t epoch = mktime(&tmp);
     if (epoch > 0) {
@@ -45,86 +89,83 @@ void TimeService::setFromRtc(const tm& t) {
     _uiVersion.bump(UiChannel::TIME);
 }
 
-void TimeService::update() {
-    updateTime();
-}
-
+// ------------------------------------------------------------
+// updateTime
+// ------------------------------------------------------------
 void TimeService::updateTime() {
-    tm t;
+
+    if (_mode == LOCAL_ONLY)
+        return;
+
+    tm t{};
     if (!getLocalTime(&t)) {
-        // если времени ещё нет вообще — помечаем ошибку/ожидание
-        if (!_valid) {
-            // NTP ещё не пришёл, RTC мог не быть
-            if (_syncState == SYNCING) {
-                // остаёмся в SYNCING, это НЕ ошибка "навсегда"
-                // но если хочешь — можно таймером перевести в ERROR
-            } else {
-                _syncState = ERROR;
-            }
-        }
+        if (_mode == NTP_ONLY)
+            _syncState = ERROR;
         return;
     }
 
-    // системное время есть → обновляем кэш
     _timeinfo = t;
-    _valid = true;
+    _valid    = true;
 
-    // если NTP ещё не помечен как SYNCED — считаем что он пришёл
-    // (на практике getLocalTime начинает давать валидное время после SNTP)
-// системное время есть → обновляем кэш
-_timeinfo = t;
-_valid = true;
+    // подтверждение NTP
+    if ((_mode == AUTO || _mode == NTP_ONLY) &&
+        _syncState == SYNCING && !_ntpConfirmed) {
 
-// ==========================================
-// 🔥 ВАЖНО:
-// если время пришло из RTC — source остаётся RTC
-// NTP подтверждаем ТОЛЬКО один раз
-// ==========================================
-if (_syncState == SYNCING && !_ntpConfirmed) {
-    // первый валидный ответ SNTP
-    _ntpConfirmed = true;
-    _source = NTP;
-    _syncState = SYNCED;
-}
-    if (t.tm_min != _lastMinute) {
-        _lastMinute = t.tm_min;
+        _ntpConfirmed = true;
+        _syncState    = SYNCED;
+        _source       = NTP;
+    }
+
+    // AUTO → пока нет NTP, считаем RTC
+    if (_mode == AUTO && !_ntpConfirmed) {
+        _source = RTC;
+    }
+
+    // DST
+    bool newDst = _dst.isDst(t);
+    if (newDst != _dstActive) {
+        _dstActive = newDst;
+        configTime(
+            _gmtOffsetSec,
+            _dstActive ? _daylightOffsetSec : 0,
+            "pool.ntp.org"
+        );
         _uiVersion.bump(UiChannel::TIME);
     }
 
-    if (t.tm_sec != _lastSecond) {
+    // обновление UI
+    if (t.tm_min != _lastMinute || t.tm_sec != _lastSecond) {
+        _lastMinute = t.tm_min;
         _lastSecond = t.tm_sec;
-        _uiVersion.bump(UiChannel::TIME); // blink/seconds
+        _uiVersion.bump(UiChannel::TIME);
     }
 }
 
+// ------------------------------------------------------------
+// NTP
+// ------------------------------------------------------------
 void TimeService::syncNtp() {
     _syncState = SYNCING;
-    _ntpConfirmed = false;
 }
 
-bool TimeService::isValid() const {
-    return _valid;
-}
+// ------------------------------------------------------------
+// getters
+// ------------------------------------------------------------
+bool TimeService::isValid() const { return _valid; }
 
-int TimeService::hour() const   { return _timeinfo.tm_hour; }
-int TimeService::minute() const { return _timeinfo.tm_min; }
-int TimeService::second() const { return _timeinfo.tm_sec; }
+int TimeService::hour()   const { return _timeinfo.tm_hour; }
+int TimeService::minute() const { return _timeinfo.tm_min;  }
+int TimeService::second() const { return _timeinfo.tm_sec;  }
 
-int TimeService::day() const   { return _timeinfo.tm_mday; }
-int TimeService::month() const { return _timeinfo.tm_mon + 1; }
-int TimeService::year() const  { return _timeinfo.tm_year + 1900; }
+int TimeService::day()    const { return _timeinfo.tm_mday; }
+int TimeService::month()  const { return _timeinfo.tm_mon + 1; }
+int TimeService::year()   const { return _timeinfo.tm_year + 1900; }
 
-TimeService::SyncState TimeService::syncState() const {
-    return _syncState;
-}
-
-TimeService::Source TimeService::source() const {
-    return _source;
-}
+TimeService::SyncState TimeService::syncState() const { return _syncState; }
+TimeService::Source    TimeService::source()    const { return _source; }
 
 bool TimeService::getTm(tm& out) const {
     if (!_valid) return false;
     out = _timeinfo;
     return true;
 }
-

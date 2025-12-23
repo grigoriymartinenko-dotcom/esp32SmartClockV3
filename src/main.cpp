@@ -102,7 +102,6 @@ ForecastService forecastService(
     LANG
 );
 
-// RTC service
 RtcService rtc(
     RTC_CLK,
     RTC_DAT,
@@ -185,7 +184,8 @@ ScreenManager screenManager(
     layout,
     sepStatus,
     sepBottom,
-    uiVersion
+    uiVersion,
+    themeService
 );
 
 // =====================================================
@@ -210,13 +210,10 @@ void setup() {
     Serial.begin(115200);
 
     uiVersion.begin();
-
-    // ---------- Preferences ----------
     prefs.begin();
 
     // ---------- Night ----------
     nightService.begin();
-
     NightModePref nm = prefs.nightMode();
     nightService.setMode(
         nm == NightModePref::AUTO ? NightService::Mode::AUTO :
@@ -240,10 +237,6 @@ void setup() {
     tft.fillScreen(0x0000);
 
     // ---------- Buttons ----------
-    pinMode(BTN_LEFT,  INPUT_PULLUP);
-    pinMode(BTN_RIGHT, INPUT_PULLUP);
-    pinMode(BTN_OK,    INPUT_PULLUP);
-    pinMode(BTN_BACK,  INPUT_PULLUP);
     buttons.begin();
 
     themeService.begin();
@@ -255,9 +248,8 @@ void setup() {
         timeService.setFromRtc(rtcTime);
     }
 
-    // ---------- NTP ----------
+    // ---------- Services ----------
     timeService.begin();
-
     layout.begin();
     dht.begin();
 
@@ -275,33 +267,22 @@ void setup() {
 // =====================================================
 void loop() {
 
-    // =================================================
-    // 1) БЫСТРЫЕ сервисы (НЕ блокируют UI)
-    // =================================================
+    // быстрые сервисы
     timeService.update();
     nightService.update(timeService);
     dht.update();
     connectivity.update();
 
-    // =================================================
-    // 2) INPUT — ВСЕГДА ПЕРВЫМ
-    //    (кнопки и навигация не должны ждать HTTP)
-    // =================================================
+    // INPUT — первым
     ButtonEvent e;
     while (buttons.poll(e)) {
         app.handleEvent(e);
     }
 
-    // =================================================
-    // 3) МЕДЛЕННЫЕ сервисы
-    //    forecastService.update() внутри делает
-    //    HTTP + TLS + JSON → может блокировать
-    // =================================================
+    // медленные сервисы
     forecastService.update();
 
-    // =================================================
-    // 4) RTC write-back после NTP (редко)
-    // =================================================
+    // RTC write-back
     if (!rtcWrittenAfterNtp &&
         timeService.syncState() == TimeService::SYNCED) {
 
@@ -312,8 +293,6 @@ void loop() {
         }
     }
 
-    // =================================================
-    // 5) DRAW (централизованно)
-    // =================================================
+    // DRAW
     screenManager.update();
 }

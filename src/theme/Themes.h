@@ -5,33 +5,44 @@
  * Themes
  * ------
  * Конкретные цветовые схемы.
- * ПОРЯДОК ПОЛЕЙ ДОЛЖЕН СОВПАДАТЬ с Theme.h
+ *
+ * Концепция:
+ *  - textPrimary  = основной текст
+ *  - select       = активный пункт меню
+ *  - accent       = линии / разделители
+ *  - muted        = вторичное
  */
 
 // =======================
 // DAY THEME
 // =======================
 constexpr Theme THEME_DAY = {
-    .bg = 0x0000,             // black
+    .bg = 0x0861,             // тёмно-синий фон
 
-    .textPrimary   = 0x07E0,  // green
-    .textSecondary = 0xFFFF, // white
-    .muted         = 0x8410, // gray
+    .textPrimary   = 0x7DDF,  // мягкий циан
+    .textSecondary = 0x57EA,  // зелёный
+    .muted         = 0x52B4,  // серо-синий
 
-    .accent = 0x001F,        // blue
-    .error  = 0xF800         // red
+    .select        = 0x07E0,  // ЯРКО-ЗЕЛЁНЫЙ (курсор)
+
+    .warn          = 0xF145,  // красный (edit / warning)
+    .accent        = 0x18E3,  // линии / разделители
+    .error         = 0xF145
 };
 
 // =======================
 // NIGHT THEME
 // =======================
 constexpr Theme THEME_NIGHT = {
-    .bg = 0x0000,             // black
+    .bg = 0x0000,             // почти чёрный
 
-    .textPrimary   = 0x03E0,  // dark green
-    .textSecondary = 0x7BEF, // dim white
-    .muted         = 0x4208, // dark gray
+    .textPrimary   = 0x4C7F,  // приглушённый циан
+    .textSecondary = 0x3D66,  // тёмно-зелёный
+    .muted         = 0x4208,  // тёмно-серый
 
-    .accent = 0x0010,        // dim blue
-    .error  = 0x7800         // dark red
+    .select        = 0x03E0,  // приглушённый зелёный (ночь)
+
+    .warn          = 0xF145,  // warning
+    .accent        = 0x0841,  // тёмные линии
+    .error         = 0x7800
 };

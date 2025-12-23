@@ -4,8 +4,10 @@
 /*
  * BottomBar.cpp
  * -------------
- * Полностью реактивный нижний бар.
- * Никаких таймеров, никаких авто-перерисовок.
+ * Нижняя статусная строка:
+ *  - вторичная информация
+ *  - спокойные цвета
+ *  - никакого мигания
  */
 
 BottomBar::BottomBar(
@@ -20,20 +22,16 @@ BottomBar::BottomBar(
 , _dht(dhtService)
 {}
 
-/*
- * markDirty()
- * -----------
- * Вызывается при изменении данных (DHT / тема).
- */
+// -----------------------------------------------------
+// markDirty()
+// -----------------------------------------------------
 void BottomBar::markDirty() {
     _dirty = true;
 }
 
-/*
- * setVisible()
- * ------------
- * ScreenManager сообщает, нужен ли BottomBar.
- */
+// -----------------------------------------------------
+// setVisible()
+// -----------------------------------------------------
 void BottomBar::setVisible(bool visible) {
     if (_visible != visible) {
         _visible = visible;
@@ -41,17 +39,15 @@ void BottomBar::setVisible(bool visible) {
     }
 }
 
-/*
- * update()
- * --------
- * Единственная точка обновления.
- */
+// -----------------------------------------------------
+// update()
+// -----------------------------------------------------
 void BottomBar::update() {
 
-    // --- скрытие ---
+    // --- если панель скрыта ---
     if (!_visible) {
         if (_wasVisible) {
-            clear();          // стираем ОДИН раз
+            clear();            // очистить один раз
             _wasVisible = false;
         }
         return;
@@ -59,18 +55,17 @@ void BottomBar::update() {
 
     _wasVisible = true;
 
-    if (!_dirty) return;
+    if (!_dirty)
+        return;
 
     clear();
     drawContent();
     _dirty = false;
 }
 
-/*
- * clear()
- * -------
- * Очистка ТОЛЬКО области BottomBar.
- */
+// -----------------------------------------------------
+// clear()
+// -----------------------------------------------------
 void BottomBar::clear() {
     const Theme& theme = _themeService.current();
 
@@ -83,11 +78,9 @@ void BottomBar::clear() {
     );
 }
 
-/*
- * drawContent()
- * -------------
- * Рисует содержимое BottomBar.
- */
+// -----------------------------------------------------
+// drawContent()
+// -----------------------------------------------------
 void BottomBar::drawContent() {
 
     const Theme& theme = _themeService.current();
@@ -95,28 +88,46 @@ void BottomBar::drawContent() {
     const int y = _layout.bottomY();
     const int h = _layout.bottomH();
 
-    // --- reset GFX ---
     _tft.setFont(nullptr);
     _tft.setTextWrap(false);
+    _tft.setTextSize(1);
 
-    // --- нет данных ---
+    // высота стандартного шрифта при size=1 ≈ 8px
+    const int TEXT_H = 8;
+    const int textY = y + (h - TEXT_H) / 2;
+
+    // -------------------------------------------------
+    // если данных нет
+    // -------------------------------------------------
     if (!_dht.isValid()) {
-        _tft.setTextSize(1);
         _tft.setTextColor(theme.muted, theme.bg);
-        _tft.setCursor(6, y + (h / 2) - 4);
-        _tft.print("DHT: --C  --%");
+        _tft.setCursor(6, textY);
+        _tft.print("DHT: --°C");
+
+        _tft.setCursor(_tft.width() - 6 - 24, textY);
+        _tft.print("--%");
         return;
     }
 
-    // --- данные есть ---
-    int t   = (int)round(_dht.temperature());
-    int hum = (int)round(_dht.humidity());
+    // -------------------------------------------------
+    // данные есть
+    // -------------------------------------------------
+    int temp = (int)round(_dht.temperature());
+    int hum  = (int)round(_dht.humidity());
 
-    _tft.setTextSize(2);
-    _tft.setTextColor(theme.textPrimary, theme.bg);
+    _tft.setTextColor(theme.muted, theme.bg);
 
-    // textSize(2) ≈ 16px высоты
-    const int textY = y + (h - 16) / 2;
+    // --- температура (слева) ---
     _tft.setCursor(6, textY);
-    _tft.printf("%dC  %d%%", t, hum);
+    _tft.printf("%d°C", temp);
+
+    // --- влажность (справа) ---
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", hum);
+
+    // ширина строки влажности: ~6px * символ
+    int humW = strlen(buf) * 6;
+
+    _tft.setCursor(_tft.width() - 6 - humW, textY);
+    _tft.print(buf);
 }

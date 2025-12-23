@@ -47,7 +47,7 @@ private:
     Adafruit_ST7735& _tft;
 
     static constexpr int STATUS_H = 24;
-
+    static constexpr int SEPARATOR_SAFE = 2; 
     // BottomBar (датчики) — как было
     static constexpr int BOTTOM_H = 36;
 

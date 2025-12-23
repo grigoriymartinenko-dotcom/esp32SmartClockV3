@@ -1,7 +1,7 @@
 #include "services/PreferencesService.h"
 
 static constexpr uint16_t EEPROM_BASE = 0x0000;
-static constexpr uint8_t  PREF_VERSION = 4; // ⬅️ bump
+static constexpr uint8_t  PREF_VERSION = 5; // ⬅️ bump (был 4)
 
 PreferencesService::PreferencesService(uint8_t addr)
     : eepromAddr(addr)
@@ -30,12 +30,15 @@ bool PreferencesService::isValid(const PreferencesData& d) const {
 void PreferencesService::applyDefaults() {
     data.version     = PREF_VERSION;
 
-    // Night
+    // ===== Night =====
     data.nightMode   = static_cast<uint8_t>(NightModePref::AUTO);
     data.nightStart  = 22 * 60;
     data.nightEnd    = 6 * 60;
 
-    // Timezone (Kyiv default)
+    // ===== Time =====
+    data.timeSource  = static_cast<uint8_t>(TimeSourcePref::AUTO);
+
+    // ===== Timezone =====
     data.tzGmtOffset = 2 * 3600;
     data.tzDstOffset = 3600;
 
@@ -60,8 +63,9 @@ void PreferencesService::save() {
     lastSaved = data;
 }
 
-// ===== getters =====
-
+// =====================================================
+// getters
+// =====================================================
 NightModePref PreferencesService::nightMode() const {
     return static_cast<NightModePref>(data.nightMode);
 }
@@ -74,6 +78,10 @@ uint16_t PreferencesService::nightEnd() const {
     return data.nightEnd;
 }
 
+TimeSourcePref PreferencesService::timeSource() const {
+    return static_cast<TimeSourcePref>(data.timeSource);
+}
+
 int32_t PreferencesService::tzGmtOffset() const {
     return data.tzGmtOffset;
 }
@@ -82,8 +90,9 @@ int32_t PreferencesService::tzDstOffset() const {
     return data.tzDstOffset;
 }
 
-// ===== setters =====
-
+// =====================================================
+// setters
+// =====================================================
 void PreferencesService::setNightMode(NightModePref m) {
     data.nightMode = static_cast<uint8_t>(m);
 }
@@ -93,13 +102,18 @@ void PreferencesService::setNightRange(uint16_t startMin, uint16_t endMin) {
     data.nightEnd   = constrain(endMin,   0, 1439);
 }
 
+void PreferencesService::setTimeSource(TimeSourcePref s) {
+    data.timeSource = static_cast<uint8_t>(s);
+}
+
 void PreferencesService::setTimezone(int32_t gmtOffset, int32_t dstOffset) {
     data.tzGmtOffset = gmtOffset;
     data.tzDstOffset = dstOffset;
 }
 
-// ===== EEPROM low-level =====
-
+// =====================================================
+// EEPROM low-level
+// =====================================================
 void PreferencesService::writeBlock(const uint8_t* buf, uint16_t len) {
     for (uint16_t i = 0; i < len; i++) {
         Wire.beginTransmission(eepromAddr);
