@@ -18,8 +18,25 @@ void RtcService::begin() {
     rtc.writeProtect(false);
 }
 
-// ================= read =================
+// ================= write =================
 
+void RtcService::write(const tm& in) {
+    static DS1302 rtc(_rst, _dat, _clk);
+
+    Time t(
+        in.tm_year + 1900,
+        in.tm_mon + 1,
+        in.tm_mday,
+        in.tm_hour,
+        in.tm_min,
+        in.tm_sec,
+        static_cast<Time::Day>(1) // Day of week, DS1302 не критично
+    );
+
+    rtc.time(t);
+}
+
+// ================= read =================
 bool RtcService::read(tm& out) {
     static DS1302 rtc(_rst, _dat, _clk);
 
@@ -38,22 +55,4 @@ bool RtcService::read(tm& out) {
     out.tm_sec  = t.sec;
 
     return true;
-}
-
-// ================= write =================
-
-void RtcService::write(const tm& in) {
-    static DS1302 rtc(_rst, _dat, _clk);
-
-    Time t(
-        in.tm_year + 1900,
-        in.tm_mon + 1,
-        in.tm_mday,
-        in.tm_hour,
-        in.tm_min,
-        in.tm_sec,
-        static_cast<Time::Day>(1) // Day of week, DS1302 не критично
-    );
-
-    rtc.time(t);
 }
