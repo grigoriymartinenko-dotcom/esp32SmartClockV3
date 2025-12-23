@@ -201,7 +201,7 @@ AppController app(
 // =====================================================
 // RTC sync guard
 // =====================================================
-static bool rtcWrittenAfterNtp = false;
+//static bool rtcWrittenAfterNtp = false;
 
 // =====================================================
 // SETUP
@@ -283,15 +283,14 @@ void loop() {
     forecastService.update();
 
     // RTC write-back
-    if (!rtcWrittenAfterNtp &&
-        timeService.syncState() == TimeService::SYNCED) {
-
-        tm now;
-        if (getLocalTime(&now)) {
-            rtc.write(now);
-            rtcWrittenAfterNtp = true;
-        }
+// RTC write-back (delegated to TimeService)
+if (timeService.shouldWriteRtc()) {
+    tm now;
+    if (getLocalTime(&now)) {
+        rtc.write(now);
+        timeService.markRtcWritten();
     }
+}
 
     // DRAW
     screenManager.update();

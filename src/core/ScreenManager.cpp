@@ -20,6 +20,9 @@ ScreenManager::ScreenManager(
 , _sepBottom(&sepBottom)
 , _uiVersion(&uiVersion)
 , _theme(&themeService)
+, _lastTimeVer(0)
+, _lastThemeVer(0)
+, _lastScreenVer(0)
 {}
 
 // ------------------------------------------------------------
@@ -72,6 +75,11 @@ void ScreenManager::begin() {
 
     _bottomBar->setVisible(_current->hasBottomBar());
     _bottomBar->markDirty();
+
+    // sync versions at start
+    _lastTimeVer   = _uiVersion->version(UiChannel::TIME);
+    _lastThemeVer  = _uiVersion->version(UiChannel::THEME);
+    _lastScreenVer = _uiVersion->version(UiChannel::SCREEN);
 }
 
 void ScreenManager::set(Screen& screen) {
@@ -96,14 +104,42 @@ void ScreenManager::set(Screen& screen) {
 
     _bottomBar->setVisible(_current->hasBottomBar());
     _bottomBar->markDirty();
+
+    _lastScreenVer = _uiVersion->version(UiChannel::SCREEN);
 }
 
 void ScreenManager::update() {
 
+    // 1) update screen
     if (_current) {
         _current->update();
     }
 
+    // 2) UiVersion → StatusBar dirty detection
+    if (_current && _current->hasStatusBar()) {
+
+        uint32_t v;
+
+        v = _uiVersion->version(UiChannel::TIME);
+        if (v != _lastTimeVer) {
+            _lastTimeVer = v;
+            _statusBar->markDirty();
+        }
+
+        v = _uiVersion->version(UiChannel::THEME);
+        if (v != _lastThemeVer) {
+            _lastThemeVer = v;
+            _statusBar->markDirty();
+        }
+
+        v = _uiVersion->version(UiChannel::SCREEN);
+        if (v != _lastScreenVer) {
+            _lastScreenVer = v;
+            _statusBar->markDirty();
+        }
+    }
+
+    // 3) draw
     if (_current && _current->hasStatusBar()) {
         _statusBar->update();
     }

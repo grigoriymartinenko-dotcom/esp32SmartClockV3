@@ -14,12 +14,15 @@
  * Режимы:
  *  - RTC_ONLY   — использовать только RTC
  *  - NTP_ONLY   — использовать только NTP
- *  - LOCAL_ONLY — время не обновляется (ручное / system)
+ *  - LOCAL_ONLY — время не обновляется
  *  - AUTO       — RTC → затем уточнение NTP
+ *
+ * ПРАВИЛО:
+ *  - _source — ЕДИНСТВЕННАЯ истина об активном источнике
+ *  - Любая смена _source обязана дергать UiVersion::TIME
  */
 class TimeService {
 public:
-    // ===== режим источника времени =====
     enum Mode {
         RTC_ONLY,
         NTP_ONLY,
@@ -27,7 +30,6 @@ public:
         AUTO
     };
 
-    // ===== состояние синхронизации =====
     enum SyncState {
         NOT_STARTED,
         SYNCING,
@@ -35,7 +37,6 @@ public:
         ERROR
     };
 
-    // ===== текущий источник =====
     enum Source {
         NONE,
         RTC,
@@ -44,21 +45,20 @@ public:
 
     explicit TimeService(UiVersionService& uiVersion);
 
-    // ===== lifecycle =====
     void begin();
     void update();
 
-    // ===== mode =====
+    // ===== RTC sync policy =====
+bool shouldWriteRtc() const;
+void markRtcWritten();
+
     void setMode(Mode m);
     Mode mode() const;
 
-    // ===== timezone / DST =====
     void setTimezone(long gmtOffsetSec, int daylightOffsetSec);
 
-    // ===== RTC =====
     void setFromRtc(const tm& t);
 
-    // ===== time access =====
     bool isValid() const;
 
     int hour()   const;
@@ -72,7 +72,6 @@ public:
     SyncState syncState() const;
     Source    source()    const;
 
-    // ===== export =====
     bool getTm(tm& out) const;
 
     bool isDstActive() const { return _dstActive; }
@@ -81,12 +80,17 @@ private:
     void updateTime();
     void syncNtp();
 
+    bool _rtcWritten = false;
+
+    // 🔹 ВАЖНО: централизованная установка источника
+    void setSource(Source s);
+
 private:
     UiVersionService& _uiVersion;
 
-    Mode      _mode       = AUTO;
-    SyncState _syncState  = NOT_STARTED;
-    Source    _source     = NONE;
+    Mode      _mode      = AUTO;
+    SyncState _syncState = NOT_STARTED;
+    Source    _source    = NONE;
 
     bool _ntpConfirmed = false;
     bool _valid        = false;

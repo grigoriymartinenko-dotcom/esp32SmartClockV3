@@ -39,6 +39,7 @@ void TimeService::setMode(Mode m) {
 
     _syncState    = NOT_STARTED;
     _ntpConfirmed = false;
+    _rtcWritten   = false;   // 🔴 ВАЖНО
 
     if (_mode == AUTO || _mode == NTP_ONLY) {
         syncNtp();
@@ -61,8 +62,6 @@ TimeService::Mode TimeService::mode() const {
 void TimeService::setTimezone(long gmtOffsetSec, int daylightOffsetSec) {
     _gmtOffsetSec      = gmtOffsetSec;
     _daylightOffsetSec = daylightOffsetSec;
-
-    // DST управляем вручную
     configTime(_gmtOffsetSec, 0, "pool.ntp.org");
 }
 
@@ -75,7 +74,7 @@ void TimeService::setFromRtc(const tm& t) {
 
     _timeinfo = t;
     _valid    = true;
-    _source   = RTC;
+    setSource(RTC);
 
     tm tmp = t;
     time_t epoch = mktime(&tmp);
@@ -107,21 +106,34 @@ void TimeService::updateTime() {
     _timeinfo = t;
     _valid    = true;
 
-    // подтверждение NTP
+    // ===== SOURCE LOGIC (ЕДИНСТВЕННОЕ МЕСТО) =====
+    switch (_mode) {
+        case RTC_ONLY:
+            _source = RTC;
+            break;
+
+        case NTP_ONLY:
+            _source = NTP;
+            break;
+
+        case LOCAL_ONLY:
+            _source = NONE;
+            break;
+
+        case AUTO:
+            _source = _ntpConfirmed ? NTP : RTC;
+            break;
+    }
+
+    // ===== подтверждение NTP (ТОЛЬКО ДЛЯ AUTO / NTP_ONLY) =====
     if ((_mode == AUTO || _mode == NTP_ONLY) &&
         _syncState == SYNCING && !_ntpConfirmed) {
 
         _ntpConfirmed = true;
         _syncState    = SYNCED;
-        _source       = NTP;
     }
 
-    // AUTO → пока нет NTP, считаем RTC
-    if (_mode == AUTO && !_ntpConfirmed) {
-        _source = RTC;
-    }
-
-    // DST
+    // ===== DST =====
     bool newDst = _dst.isDst(t);
     if (newDst != _dstActive) {
         _dstActive = newDst;
@@ -133,7 +145,7 @@ void TimeService::updateTime() {
         _uiVersion.bump(UiChannel::TIME);
     }
 
-    // обновление UI
+    // ===== UI bump =====
     if (t.tm_min != _lastMinute || t.tm_sec != _lastSecond) {
         _lastMinute = t.tm_min;
         _lastSecond = t.tm_sec;
@@ -146,6 +158,20 @@ void TimeService::updateTime() {
 // ------------------------------------------------------------
 void TimeService::syncNtp() {
     _syncState = SYNCING;
+}
+
+// ------------------------------------------------------------
+// SOURCE (ЕДИНСТВЕННАЯ ТОЧКА)
+// ------------------------------------------------------------
+void TimeService::setSource(Source s) {
+    if (_source == s)
+        return;
+
+    _source = s;
+
+    // 🔥 КЛЮЧЕВОЕ СОБЫТИЕ:
+    // UI обязан узнать, что источник сменился
+    _uiVersion.bump(UiChannel::TIME);
 }
 
 // ------------------------------------------------------------
@@ -168,4 +194,24 @@ bool TimeService::getTm(tm& out) const {
     if (!_valid) return false;
     out = _timeinfo;
     return true;
+}
+
+bool TimeService::shouldWriteRtc() const {
+    // RTC обновляем ТОЛЬКО в AUTO
+    if (_mode != AUTO)
+        return false;
+
+    // только после подтверждённого NTP
+    if (_syncState != SYNCED)
+        return false;
+
+    // только один раз
+    if (_rtcWritten)
+        return false;
+
+    return true;
+}
+
+void TimeService::markRtcWritten() {
+    _rtcWritten = true;
 }

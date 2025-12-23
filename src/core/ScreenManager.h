@@ -41,6 +41,12 @@ private:
     Screen*           _current = nullptr;
     Screen*           _prev    = nullptr;
 
+
+    // ===== UiVersion cache (for dirty detection) =====
+uint32_t _lastTimeVer   = 0;
+uint32_t _lastThemeVer  = 0;
+uint32_t _lastScreenVer = 0;
+
     StatusBar*        _statusBar;
     BottomBar*        _bottomBar;
     LayoutService*    _layout;
