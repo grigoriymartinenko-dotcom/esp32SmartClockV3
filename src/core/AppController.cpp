@@ -64,10 +64,14 @@ void AppController::handleEvent(const ButtonEvent& e) {
     if (_active == ActiveScreen::SETTINGS) {
 
         if (e.type == ButtonEventType::SHORT_PRESS) {
+            Serial.println("[AppController] SHORT_PRESS in SETTINGS");
             switch (e.id) {
                 case ButtonId::LEFT:  _settings.onShortLeft();  break;
                 case ButtonId::RIGHT: _settings.onShortRight(); break;
-                case ButtonId::OK:    _settings.onShortOk();    break;
+                case ButtonId::OK:
+    Serial.println("[AppController] OK → SettingsScreen");
+    _settings.onShortOk();
+    break;
                 case ButtonId::BACK:  _settings.onShortBack();  break;
             }
         }

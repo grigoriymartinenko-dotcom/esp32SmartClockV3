@@ -1,48 +1,82 @@
 #include "screens/SettingsScreen.h"
 
-// ============================================================================
-// submenu items count
-// ============================================================================
-int SettingsScreen::submenuItemsCount() const {
-    switch (_level) {
-        case Level::TIMEZONE: return 2;
-        case Level::TIME:     return 1;
-        case Level::NIGHT:    return 3;
-        case Level::WIFI:     return 1;   // ✅
-        case Level::ROOT:     return (int)(sizeof(MENU) / sizeof(MENU[0]));
-    }
-    return 1;
-}
+/*
+ * SettingsNav.cpp
+ * ----------------
+ * Навигация по меню Settings.
+ *
+ * ПРАВИЛА:
+ *  - НИКАКОЙ отрисовки
+ *  - ТОЛЬКО изменение индексов
+ *  - Scroll-логика живёт ЗДЕСЬ, а не в draw
+ */
 
-// ============================================================================
-// NAVIGATION
-// ============================================================================
 void SettingsScreen::navLeft() {
+
+    // ===== ROOT =====
     if (_level == Level::ROOT) {
-        int n = sizeof(MENU) / sizeof(MENU[0]);
-        _selected = (_selected + n - 1) % n;
+        if (_selected > 0) _selected--;
         _dirty = true;
         return;
     }
 
-    int n = submenuItemsCount();
-    if (n <= 1) return;
+    // ===== WIFI MENU =====
+    if (_level == Level::WIFI) {
+        if (_subSelected > 0) _subSelected--;
+        _dirty = true;
+        return;
+    }
 
-    _subSelected = (_subSelected + n - 1) % n;
-    _dirty = true;
+    // ===== WIFI LIST =====
+    if (_level == Level::WIFI_LIST) {
+
+        int total = _wifi.networksCount(); // ТОЛЬКО SSID
+
+        if (_wifiListSelected > 0)
+            _wifiListSelected--;
+
+        // --- SCROLL UP ---
+        if (_wifiListSelected < _wifiListTop)
+            _wifiListTop = _wifiListSelected;
+
+        _dirty = true;
+        return;
+    }
 }
 
 void SettingsScreen::navRight() {
+
+    // ===== ROOT =====
     if (_level == Level::ROOT) {
-        int n = sizeof(MENU) / sizeof(MENU[0]);
-        _selected = (_selected + 1) % n;
+        int max = (int)(sizeof(MENU) / sizeof(MENU[0])) - 1;
+        if (_selected < max) _selected++;
         _dirty = true;
         return;
     }
 
-    int n = submenuItemsCount();
-    if (n <= 1) return;
+    // ===== WIFI MENU =====
+    if (_level == Level::WIFI) {
+        if (_subSelected < 1) _subSelected++;
+        _dirty = true;
+        return;
+    }
 
-    _subSelected = (_subSelected + 1) % n;
-    _dirty = true;
+    // ===== WIFI LIST =====
+    if (_level == Level::WIFI_LIST) {
+
+        int total =
+            _wifi.networksCount() + 1; // + Rescan
+
+        if (_wifiListSelected < total - 1)
+            _wifiListSelected++;
+
+        // --- SCROLL DOWN ---
+        constexpr int VISIBLE_ROWS = 4;
+
+        if (_wifiListSelected >= _wifiListTop + VISIBLE_ROWS)
+            _wifiListTop = _wifiListSelected - VISIBLE_ROWS + 1;
+
+        _dirty = true;
+        return;
+    }
 }

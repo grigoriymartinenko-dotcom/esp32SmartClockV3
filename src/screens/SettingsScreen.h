@@ -58,6 +58,7 @@ public:
     bool exitRequested() const;
     void clearExitRequest();
 
+    void drawWifiList();
 private:
     // ===== Типы =====
     using Level    = SettingsTypes::Level;
@@ -70,8 +71,9 @@ private:
 
 protected:
     // ===== DRAW (implemented in settings/*.cpp) =====
+protected:
     void redrawAll();
-void drawWifi();        // ← 🔥 ВАЖНО
+    void drawWifi();
     void drawRoot();
     void drawTime();
     void drawNight();
@@ -108,8 +110,10 @@ private:
     Level  _level = Level::ROOT;
     UiMode _mode  = UiMode::NAV;
 
-    int _selected    = 0;
-    int _subSelected = 0;
+// ===== Wi-Fi =====
+    int _selected    = 0;   // ROOT menu cursor
+    int _subSelected = 0;   // submenu cursor
+    int _wifiListTop = 0;   // индекс верхней видимой строки списка Wi-Fi
 
     // ===== Button feedback =====
     HintBtn _pressedBtn = HintBtn::NONE;
@@ -158,4 +162,7 @@ private:
     // ===== Wi-Fi =====
     bool _tmpWifiOn = true;
     bool _bakWifiOn = true;
+    // ===== Wi-Fi list =====
+// выбранный SSID в списке сканирования
+int _wifiListSelected = 0;
 };

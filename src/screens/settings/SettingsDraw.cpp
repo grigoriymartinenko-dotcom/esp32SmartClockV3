@@ -10,16 +10,14 @@
  * ВСЯ отрисовка экрана Settings.
  *
  * ПРАВИЛА:
- *  - НИКАКОЙ логики изменения значений
+ *  - НИКАКОЙ логики изменения состояния
  *  - НИКАКОГО чтения кнопок
- *  - ТОЛЬКО визуализация текущего UI-состояния
+ *  - ТОЛЬКО визуализация текущего состояния UI
  *
- * Источники данных:
- *  - _level        — какой экран сейчас
- *  - _mode         — NAV / EDIT
- *  - _selected     — пункт в ROOT
- *  - _subSelected  — пункт в submenu
- *  - _tmp*         — временные значения (EDIT)
+ * ВАЖНО:
+ *  Если пункт существует в логике (SettingsScreen.cpp),
+ *  он ОБЯЗАН быть отрисован здесь.
+ *  Иначе пользователь попадает на "невидимое меню".
  */
 
 // ============================================================================
@@ -36,31 +34,169 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
 // REDRAW ALL
 // ============================================================================
 void SettingsScreen::redrawAll() {
-    const Theme& th = theme();
 
-    // Высота области без BottomBar
+    const Theme& th = theme();
     int h = _layout.buttonBarY();
 
-    // Полная очистка нужна:
-    //  - при первом входе
-    //  - при смене уровня (ROOT → WIFI и т.п.)
+    // Полная очистка экрана ТОЛЬКО при смене уровня меню или темы
     if (_needFullClear || _lastDrawnLevel != _level) {
         _tft.fillRect(0, 0, _tft.width(), h, th.bg);
         _needFullClear  = false;
         _lastDrawnLevel = _level;
     }
 
-    // === Выбор отрисовки по текущему уровню ===
     switch (_level) {
-        case Level::ROOT:     drawRoot();     break;
-        case Level::WIFI:     drawWifi();     break;
-        case Level::TIME:     drawTime();     break;
-        case Level::NIGHT:    drawNight();    break;
-        case Level::TIMEZONE: drawTimezone(); break;
+        case Level::ROOT:      drawRoot();     break;
+        case Level::WIFI:      drawWifi();     break;
+        case Level::WIFI_LIST: drawWifiList(); break;
+        case Level::TIME:      drawTime();     break;
+        case Level::NIGHT:     drawNight();    break;
+        case Level::TIMEZONE:  drawTimezone(); break;
     }
 
-    // Подсказки кнопок рисуются ВСЕГДА
     drawButtonHints();
+}
+
+// ============================================================================
+// WIFI MENU (State + Scan)
+// ============================================================================
+void SettingsScreen::drawWifi() {
+
+    const Theme& th = theme();
+
+    // ----- Title -----
+    _tft.setTextSize(2);
+    _tft.setCursor(34, 10);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Wi-Fi");
+
+    _tft.setTextSize(1);
+
+    int top  = 40;
+    int rowH = 18;
+
+    // ------------------------------------------------------------------------
+    // ROW 0 — State: ON / OFF
+    // ------------------------------------------------------------------------
+    {
+        int y = top + 0 * rowH;
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
+
+        bool sel = (_subSelected == 0);
+
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+        _tft.setCursor(12, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("State: ");
+
+        _tft.setTextColor(
+            (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
+            th.bg
+        );
+        _tft.print(_tmpWifiOn ? "ON" : "OFF");
+    }
+
+    // ------------------------------------------------------------------------
+    // ROW 1 — Scan
+    // ------------------------------------------------------------------------
+    {
+        int y = top + 1 * rowH;
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
+
+        bool sel = (_subSelected == 1);
+
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+        _tft.setCursor(12, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("Scan");
+    }
+}
+
+// ============================================================================
+// WIFI LIST (SSID + RESCAN)
+// ============================================================================
+void SettingsScreen::drawWifiList() {
+
+    const Theme& th = theme();
+
+    // ------------------------------------------------------------------------
+    // Очищаем ВСЮ рабочую область списка
+    // (обязательно для async-экранов)
+    // ------------------------------------------------------------------------
+    int listTop = 36;
+    int listH   = _layout.buttonBarY() - listTop;
+    _tft.fillRect(0, listTop, _tft.width(), listH, th.bg);
+
+    // ----- Title -----
+    _tft.setTextSize(2);
+    _tft.setCursor(18, 10);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Wi-Fi scan");
+
+    _tft.setTextSize(1);
+
+    // ------------------------------------------------------------------------
+    // 1) SCANNING — высший приоритет
+    // ------------------------------------------------------------------------
+    if (_wifi.isScanning()) {
+        _tft.setCursor(20, 50);
+        _tft.setTextColor(th.muted, th.bg);
+        _tft.print("Scanning...");
+        return;
+    }
+
+    int rowH = 16;
+    int y    = listTop;
+    int idx  = 0;
+
+    // ------------------------------------------------------------------------
+    // 2) SCAN FINISHED, NO NETWORKS → показываем ТОЛЬКО Rescan
+    // ------------------------------------------------------------------------
+    if (_wifi.isScanFinished() && _wifi.networksCount() == 0) {
+
+        bool sel = (_wifiListSelected == 0);
+
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+        _tft.setCursor(8, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("Rescan----------");
+
+        return;
+    }
+
+    // ------------------------------------------------------------------------
+    // 3) NETWORK LIST
+    // ------------------------------------------------------------------------
+constexpr int VISIBLE_ROWS = 4;
+
+for (int i = 0; i < VISIBLE_ROWS; i++) {
+
+    int idx = _wifiListTop + i;
+
+    if (idx >= _wifi.networksCount())
+        break;
+
+    int y = listTop + i * rowH;
+
+    bool sel = (idx == _wifiListSelected);
+
+    _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+    _tft.setCursor(8, y + 4);
+    _tft.print(sel ? "> " : "  ");
+    _tft.print(_wifi.ssidAt(idx));
+}
+
+    // ------------------------------------------------------------------------
+    // 4) RESCAN (всегда последний пункт)
+    // ------------------------------------------------------------------------
+    {
+        bool sel = (_wifiListSelected == idx);
+
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+        _tft.setCursor(8, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print("Rescan----------");
+    }
 }
 
 // ============================================================================
@@ -92,77 +228,6 @@ void SettingsScreen::drawRoot() {
         _tft.setCursor(12, y + 4);
         _tft.print(sel ? "> " : "  ");
         _tft.print(MENU[i].label);
-    }
-}
-
-// ============================================================================
-// WIFI
-// ============================================================================
-void SettingsScreen::drawWifi() {
-    const Theme& th = theme();
-
-    // ----- Заголовок -----
-    _tft.setTextSize(2);
-    _tft.setCursor(34, 10);
-    _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.print("Wi-Fi");
-
-    _tft.setTextSize(1);
-
-    // ----- Единственный пункт меню -----
-    int y = 40;
-    _tft.fillRect(0, y, _tft.width(), 18, th.bg);
-
-    bool sel = (_subSelected == 0);
-
-    // Курсор
-    _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-    _tft.setCursor(12, y + 4);
-    _tft.print(sel ? "> " : "  ");
-    _tft.print("State: ");
-
-    /*
-     * Цвет значения:
-     *  - NAV  → обычный текст
-     *  - EDIT → warn (чётко видно, что редактируем)
-     */
-    _tft.setTextColor(
-        (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
-        th.bg
-    );
-
-    _tft.print(_tmpWifiOn ? "ON" : "OFF");
-
-    // ----- Текущий РЕАЛЬНЫЙ статус Wi-Fi -----
-    // (не редактируемый, только для информации)
-    int y2 = y + 22;
-    _tft.fillRect(0, y2, _tft.width(), 14, th.bg);
-
-    _tft.setCursor(12, y2 + 2);
-    _tft.setTextColor(th.muted, th.bg);
-    _tft.print("Status: ");
-
-    switch (_wifi.state()) {
-        case WifiService::State::ONLINE:
-            _tft.setTextColor(th.textSecondary, th.bg);
-            _tft.print("ONLINE");
-            break;
-
-        case WifiService::State::CONNECTING:
-            _tft.setTextColor(th.accent, th.bg);
-            _tft.print("CONNECTING");
-            break;
-
-        case WifiService::State::ERROR:
-            _tft.setTextColor(th.error, th.bg);
-            _tft.print("ERROR");
-            break;
-
-        case WifiService::State::OFF:
-        default:
-            _tft.setTextColor(th.muted, th.bg);
-            _tft.print("OFF");
-            break;
     }
 }
 
@@ -237,7 +302,8 @@ void SettingsScreen::drawNight() {
             );
             _tft.print(
                 _tmpMode == NightService::Mode::AUTO ? "AUTO" :
-                _tmpMode == NightService::Mode::ON   ? "ON"   : "OFF"
+                _tmpMode == NightService::Mode::ON   ? "ON"   :
+                                                       "OFF"
             );
         } else {
             int v = (i == 1) ? _tmpNightStart : _tmpNightEnd;

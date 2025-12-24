@@ -200,6 +200,8 @@ AppController app(
 // =====================================================
 void setup() {
     Serial.begin(115200);
+    delay(500);
+    Serial.println("BOOT");
 
     uiVersion.begin();
     prefs.begin();
