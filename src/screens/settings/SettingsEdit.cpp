@@ -19,6 +19,10 @@ void SettingsScreen::enterEdit() {
     _mode = UiMode::EDIT;
 
     // backup значений
+    if (_level == Level::WIFI) {
+        _bakWifiOn = _tmpWifiOn;
+    }
+
     if (_level == Level::TIME) {
         _bakTimeMode = _tmpTimeMode;
     }
@@ -41,8 +45,13 @@ void SettingsScreen::enterEdit() {
 // EXIT EDIT
 // ============================================================================
 void SettingsScreen::exitEdit(bool apply) {
+
     if (!apply) {
         // rollback
+        if (_level == Level::WIFI) {
+            _tmpWifiOn = _bakWifiOn;
+        }
+
         if (_level == Level::TIME) {
             _tmpTimeMode = _bakTimeMode;
         }
@@ -59,7 +68,7 @@ void SettingsScreen::exitEdit(bool apply) {
         }
     }
 
-    // APPLY делаем НЕ здесь (как и было задумано)
+    // APPLY делаем НЕ здесь
     _mode = UiMode::NAV;
     _dirty = true;
 }
@@ -68,6 +77,19 @@ void SettingsScreen::exitEdit(bool apply) {
 // EDIT INC
 // ============================================================================
 void SettingsScreen::editInc() {
+
+    // ------------------------------------------------------------
+    // WIFI
+    // ------------------------------------------------------------
+    if (_level == Level::WIFI && _subSelected == 0) {
+        _tmpWifiOn = !_tmpWifiOn;
+        _dirty = true;
+        return;
+    }
+
+    // ------------------------------------------------------------
+    // TIME
+    // ------------------------------------------------------------
     if (_level == Level::TIME && _subSelected == 0) {
         int v = (int)_tmpTimeMode;
         _tmpTimeMode = (TimeService::Mode)((v + 1) % 4);
@@ -75,6 +97,9 @@ void SettingsScreen::editInc() {
         return;
     }
 
+    // ------------------------------------------------------------
+    // NIGHT
+    // ------------------------------------------------------------
     if (_level == Level::NIGHT) {
         if (_subSelected == 0) {
             int v = (int)_tmpMode;
@@ -88,6 +113,9 @@ void SettingsScreen::editInc() {
         return;
     }
 
+    // ------------------------------------------------------------
+    // TIMEZONE
+    // ------------------------------------------------------------
     if (_level == Level::TIMEZONE) {
         if (_subSelected == 0) {
             _tmpTzSec = min(_tmpTzSec + TZ_STEP, TZ_MAX);
@@ -103,6 +131,19 @@ void SettingsScreen::editInc() {
 // EDIT DEC
 // ============================================================================
 void SettingsScreen::editDec() {
+
+    // ------------------------------------------------------------
+    // WIFI
+    // ------------------------------------------------------------
+    if (_level == Level::WIFI && _subSelected == 0) {
+        _tmpWifiOn = !_tmpWifiOn;
+        _dirty = true;
+        return;
+    }
+
+    // ------------------------------------------------------------
+    // TIME
+    // ------------------------------------------------------------
     if (_level == Level::TIME && _subSelected == 0) {
         int v = (int)_tmpTimeMode;
         _tmpTimeMode = (TimeService::Mode)((v + 3) % 4);
@@ -110,6 +151,9 @@ void SettingsScreen::editDec() {
         return;
     }
 
+    // ------------------------------------------------------------
+    // NIGHT
+    // ------------------------------------------------------------
     if (_level == Level::NIGHT) {
         if (_subSelected == 0) {
             int v = (int)_tmpMode;
@@ -123,6 +167,9 @@ void SettingsScreen::editDec() {
         return;
     }
 
+    // ------------------------------------------------------------
+    // TIMEZONE
+    // ------------------------------------------------------------
     if (_level == Level::TIMEZONE) {
         if (_subSelected == 0) {
             _tmpTzSec = max(_tmpTzSec - TZ_STEP, TZ_MIN);
@@ -132,4 +179,4 @@ void SettingsScreen::editDec() {
         _dirty = true;
         return;
     }
-}
+} 

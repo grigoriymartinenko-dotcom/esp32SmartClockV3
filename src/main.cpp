@@ -22,6 +22,7 @@
 #include "services/ConnectivityService.h"
 #include "services/RtcService.h"
 #include "services/PreferencesService.h"
+#include "services/WifiService.h"          // 🔹 WIFI
 
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
@@ -68,20 +69,9 @@ Buttons buttons(
     BTN_RIGHT,
     BTN_OK,
     BTN_BACK,
-    50,   // debounce ms
-    800   // long press ms
+    50,
+    800
 );
-
-// =====================================================
-// Wi-Fi / Weather
-// =====================================================
-static const char* WIFI_SSID = "grig";
-static const char* WIFI_PASS = "magnetic";
-
-static const char* OPENWEATHER_KEY = "07108cf067a5fdf5aa26dce75354400f";
-static const char* CITY  = "Kharkiv";
-static const char* UNITS = "metric";
-static const char* LANG  = "en";
 
 // =====================================================
 // UI VERSION
@@ -95,11 +85,19 @@ ThemeService themeService(uiVersion);
 TimeService  timeService(uiVersion);
 NightService nightService(uiVersion);
 
+PreferencesService prefs;
+
+// 🔹 WIFI SERVICE (ВАЖНО: ДО StatusBar и SettingsScreen)
+WifiService wifi(
+    uiVersion,
+    prefs
+);
+
 ForecastService forecastService(
-    OPENWEATHER_KEY,
-    CITY,
-    UNITS,
-    LANG
+    "07108cf067a5fdf5aa26dce75354400f",
+    "Kharkiv",
+    "metric",
+    "en"
 );
 
 RtcService rtc(
@@ -107,8 +105,6 @@ RtcService rtc(
     RTC_DAT,
     RTC_RST
 );
-
-PreferencesService prefs;
 
 // =====================================================
 // LAYOUT
@@ -170,6 +166,7 @@ SettingsScreen settingsScreen(
     layout,
     nightService,
     timeService,
+    wifi,          // 🔹 ОБЯЗАТЕЛЬНО
     uiVersion
 );
 
@@ -199,11 +196,6 @@ AppController app(
 );
 
 // =====================================================
-// RTC sync guard
-// =====================================================
-//static bool rtcWrittenAfterNtp = false;
-
-// =====================================================
 // SETUP
 // =====================================================
 void setup() {
@@ -212,50 +204,32 @@ void setup() {
     uiVersion.begin();
     prefs.begin();
 
-    // ---------- Night ----------
     nightService.begin();
-    NightModePref nm = prefs.nightMode();
-    nightService.setMode(
-        nm == NightModePref::AUTO ? NightService::Mode::AUTO :
-        nm == NightModePref::ON   ? NightService::Mode::ON   :
-                                    NightService::Mode::OFF
-    );
-    nightService.setAutoRange(
-        prefs.nightStart(),
-        prefs.nightEnd()
-    );
 
-    // ---------- Timezone ----------
     timeService.setTimezone(
         prefs.tzGmtOffset(),
         prefs.tzDstOffset()
     );
 
-    // ---------- TFT ----------
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
     tft.fillScreen(0x0000);
 
-    // ---------- Buttons ----------
     buttons.begin();
-
     themeService.begin();
 
-    // ---------- RTC ----------
     rtc.begin();
     tm rtcTime;
     if (rtc.read(rtcTime)) {
         timeService.setFromRtc(rtcTime);
     }
 
-    // ---------- Services ----------
     timeService.begin();
-    layout.begin();
-    dht.begin();
-
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    wifi.begin();              // 🔹 WIFI
     connectivity.begin();
 
+    layout.begin();
+    dht.begin();
     forecastService.begin();
 
     screenManager.begin();
@@ -267,31 +241,26 @@ void setup() {
 // =====================================================
 void loop() {
 
-    // быстрые сервисы
     timeService.update();
     nightService.update(timeService);
+    wifi.update();             // 🔹 WIFI
     dht.update();
     connectivity.update();
 
-    // INPUT — первым
     ButtonEvent e;
     while (buttons.poll(e)) {
         app.handleEvent(e);
     }
 
-    // медленные сервисы
     forecastService.update();
 
-    // RTC write-back
-// RTC write-back (delegated to TimeService)
-if (timeService.shouldWriteRtc()) {
-    tm now;
-    if (getLocalTime(&now)) {
-        rtc.write(now);
-        timeService.markRtcWritten();
+    if (timeService.shouldWriteRtc()) {
+        tm now;
+        if (getLocalTime(&now)) {
+            rtc.write(now);
+            timeService.markRtcWritten();
+        }
     }
-}
 
-    // DRAW
     screenManager.update();
 }

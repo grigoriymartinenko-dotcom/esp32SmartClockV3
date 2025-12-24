@@ -1,45 +1,42 @@
 #pragma once
-
 #include <WiFi.h>
 
-/*
- * ============================================================
- * WiFiService
- *
- * Сервис управления Wi-Fi:
- *  - подключение
- *  - переподключение
- *  - предоставление статуса
- *
- * НЕ знает про UI, экраны, погоду.
- * ============================================================
- */
-class WiFiService {
+#include "services/UiVersionService.h"
+#include "services/PreferencesService.h"
+
+class WifiService {
 public:
-    enum class Status {
-        DISCONNECTED,
+    enum class State {
+        OFF,
         CONNECTING,
-        CONNECTED
+        ONLINE,
+        ERROR
     };
 
-    WiFiService(const char* ssid, const char* password);
+    WifiService(
+        UiVersionService& ui,
+        PreferencesService& prefs
+    );
 
-    // запуск подключения
     void begin();
-
-    // вызывать в loop()
     void update();
 
-    // состояния
-    bool isConnected() const;
-    Status status() const;
+    void setEnabled(bool on);
+    bool isEnabled() const;
+
+    State state() const;
 
 private:
-    const char* _ssid;
-    const char* _password;
+    void start();
+    void stop();
 
-    Status _status = Status::DISCONNECTED;
+private:
+    UiVersionService& _ui;
+    PreferencesService& _prefs;
 
-    unsigned long _lastAttemptMs = 0;
-    static constexpr unsigned long RECONNECT_INTERVAL = 10000; // 10 сек
+    State _state = State::OFF;
+    bool  _enabled = false;
+
+    unsigned long _connectStartMs = 0;
+    static constexpr unsigned long CONNECT_TIMEOUT_MS = 15000;
 };

@@ -15,6 +15,7 @@
 enum class UiChannel : uint8_t {
     TIME = 0,
     THEME,
+    WIFI,        // 🔹 ДОБАВИЛИ
     FORECAST,
     SENSOR,
     SCREEN,

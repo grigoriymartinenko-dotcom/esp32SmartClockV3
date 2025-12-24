@@ -15,10 +15,10 @@ enum class NightModePref : uint8_t {
 // Time source preference
 // =====================================================
 enum class TimeSourcePref : uint8_t {
-    AUTO       = 0, // RTC -> NTP (умный режим)
-    RTC_ONLY  = 1, // только RTC
-    NTP_ONLY  = 2, // только NTP
-    LOCAL_ONLY= 3  // ручной / локальный
+    AUTO        = 0,
+    RTC_ONLY   = 1,
+    NTP_ONLY   = 2,
+    LOCAL_ONLY = 3
 };
 
 // ⚠️ packed — без padding
@@ -36,6 +36,11 @@ struct __attribute__((packed)) PreferencesData {
     // ===== Timezone =====
     int32_t  tzGmtOffset;   // seconds
     int32_t  tzDstOffset;   // seconds
+
+    // ===== Wi-Fi =====
+// ===== Connectivity =====
+uint8_t wifiEnabled; // 0 = OFF, 1 = ON
+
 
     // ===== Other =====
     uint8_t  brightness;
@@ -55,6 +60,7 @@ public:
     uint16_t nightStart() const;
     uint16_t nightEnd() const;
 
+
     void setNightMode(NightModePref m);
     void setNightRange(uint16_t startMin, uint16_t endMin);
 
@@ -66,6 +72,12 @@ public:
     int32_t tzGmtOffset() const;
     int32_t tzDstOffset() const;
     void setTimezone(int32_t gmtOffset, int32_t dstOffset);
+
+    // ===== Wi-Fi =====
+    bool wifiEnabled() const;                 // 🔹 ДОБАВЛЕНО
+    void setWifiEnabled(bool on);              // 🔹 ДОБАВЛЕНО
+
+
 
     // ===== Save =====
     void save();

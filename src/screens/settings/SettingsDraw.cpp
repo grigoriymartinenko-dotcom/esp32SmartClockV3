@@ -4,10 +4,23 @@
 #include <stdio.h>
 #include <string.h>
 
-// ============================================================================
-// PreferencesService — глобальный объект
-// ============================================================================
-extern PreferencesService prefs;
+/*
+ * SettingsDraw.cpp
+ * ----------------
+ * ВСЯ отрисовка экрана Settings.
+ *
+ * ПРАВИЛА:
+ *  - НИКАКОЙ логики изменения значений
+ *  - НИКАКОГО чтения кнопок
+ *  - ТОЛЬКО визуализация текущего UI-состояния
+ *
+ * Источники данных:
+ *  - _level        — какой экран сейчас
+ *  - _mode         — NAV / EDIT
+ *  - _selected     — пункт в ROOT
+ *  - _subSelected  — пункт в submenu
+ *  - _tmp*         — временные значения (EDIT)
+ */
 
 // ============================================================================
 // helpers
@@ -25,20 +38,28 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
 void SettingsScreen::redrawAll() {
     const Theme& th = theme();
 
+    // Высота области без BottomBar
     int h = _layout.buttonBarY();
+
+    // Полная очистка нужна:
+    //  - при первом входе
+    //  - при смене уровня (ROOT → WIFI и т.п.)
     if (_needFullClear || _lastDrawnLevel != _level) {
         _tft.fillRect(0, 0, _tft.width(), h, th.bg);
         _needFullClear  = false;
         _lastDrawnLevel = _level;
     }
 
+    // === Выбор отрисовки по текущему уровню ===
     switch (_level) {
         case Level::ROOT:     drawRoot();     break;
+        case Level::WIFI:     drawWifi();     break;
         case Level::TIME:     drawTime();     break;
         case Level::NIGHT:    drawNight();    break;
         case Level::TIMEZONE: drawTimezone(); break;
     }
 
+    // Подсказки кнопок рисуются ВСЕГДА
     drawButtonHints();
 }
 
@@ -55,13 +76,14 @@ void SettingsScreen::drawRoot() {
 
     _tft.setTextSize(1);
 
-    int top = 36;
+    int top    = 36;
     int bottom = _layout.buttonBarY();
-    int count = sizeof(MENU) / sizeof(MENU[0]);
-    int rowH = (bottom - top) / count;
+    int count  = sizeof(MENU) / sizeof(MENU[0]);
+    int rowH   = (bottom - top) / count;
 
     for (int i = 0; i < count; i++) {
         int y = top + i * rowH;
+
         _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
 
         bool sel = (i == _selected);
@@ -70,6 +92,77 @@ void SettingsScreen::drawRoot() {
         _tft.setCursor(12, y + 4);
         _tft.print(sel ? "> " : "  ");
         _tft.print(MENU[i].label);
+    }
+}
+
+// ============================================================================
+// WIFI
+// ============================================================================
+void SettingsScreen::drawWifi() {
+    const Theme& th = theme();
+
+    // ----- Заголовок -----
+    _tft.setTextSize(2);
+    _tft.setCursor(34, 10);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Wi-Fi");
+
+    _tft.setTextSize(1);
+
+    // ----- Единственный пункт меню -----
+    int y = 40;
+    _tft.fillRect(0, y, _tft.width(), 18, th.bg);
+
+    bool sel = (_subSelected == 0);
+
+    // Курсор
+    _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+    _tft.setCursor(12, y + 4);
+    _tft.print(sel ? "> " : "  ");
+    _tft.print("State: ");
+
+    /*
+     * Цвет значения:
+     *  - NAV  → обычный текст
+     *  - EDIT → warn (чётко видно, что редактируем)
+     */
+    _tft.setTextColor(
+        (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
+        th.bg
+    );
+
+    _tft.print(_tmpWifiOn ? "ON" : "OFF");
+
+    // ----- Текущий РЕАЛЬНЫЙ статус Wi-Fi -----
+    // (не редактируемый, только для информации)
+    int y2 = y + 22;
+    _tft.fillRect(0, y2, _tft.width(), 14, th.bg);
+
+    _tft.setCursor(12, y2 + 2);
+    _tft.setTextColor(th.muted, th.bg);
+    _tft.print("Status: ");
+
+    switch (_wifi.state()) {
+        case WifiService::State::ONLINE:
+            _tft.setTextColor(th.textSecondary, th.bg);
+            _tft.print("ONLINE");
+            break;
+
+        case WifiService::State::CONNECTING:
+            _tft.setTextColor(th.accent, th.bg);
+            _tft.print("CONNECTING");
+            break;
+
+        case WifiService::State::ERROR:
+            _tft.setTextColor(th.error, th.bg);
+            _tft.print("ERROR");
+            break;
+
+        case WifiService::State::OFF:
+        default:
+            _tft.setTextColor(th.muted, th.bg);
+            _tft.print("OFF");
+            break;
     }
 }
 
@@ -122,7 +215,7 @@ void SettingsScreen::drawNight() {
 
     _tft.setTextSize(1);
 
-    int top = 40;
+    int top  = 40;
     int rowH = 18;
     char buf[8];
 
@@ -173,15 +266,12 @@ void SettingsScreen::drawTimezone() {
 
     _tft.setTextSize(1);
 
-    int top = 40;
+    int top  = 40;
     int rowH = 18;
 
-    int32_t utc = (_mode == UiMode::EDIT) ? _tmpTzSec  : prefs.tzGmtOffset();
-    int32_t dst = (_mode == UiMode::EDIT) ? _tmpDstSec : prefs.tzDstOffset();
-
     char ub[8], db[8];
-    formatOffsetHM(utc, ub, sizeof(ub));
-    formatOffsetHM(dst, db, sizeof(db));
+    formatOffsetHM(_tmpTzSec,  ub, sizeof(ub));
+    formatOffsetHM(_tmpDstSec, db, sizeof(db));
 
     for (int i = 0; i < 2; i++) {
         int y = top + i * rowH;
@@ -210,6 +300,7 @@ void SettingsScreen::drawButtonHints() {
     int y0 = _layout.buttonBarY();
 
     _tft.fillRect(0, y0, _tft.width(), _tft.height() - y0, th.bg);
+
     _tft.setTextSize(1);
     _tft.setCursor(4, y0 + 4);
 
@@ -221,8 +312,8 @@ void SettingsScreen::drawButtonHints() {
 
     bool edit = (_mode == UiMode::EDIT);
 
-    _tft.setTextColor(col(HintBtn::LEFT),  th.bg);  _tft.print("< ");
-    _tft.setTextColor(col(HintBtn::RIGHT), th.bg);  _tft.print(">   ");
-    _tft.setTextColor(col(HintBtn::OK),    th.bg);  _tft.print(edit ? "OK+  " : "OK   ");
-    _tft.setTextColor(col(HintBtn::BACK),  th.bg);  _tft.print(edit ? "BACK+" : "BACK");
+    _tft.setTextColor(col(HintBtn::LEFT),  th.bg); _tft.print("< ");
+    _tft.setTextColor(col(HintBtn::RIGHT), th.bg); _tft.print(">   ");
+    _tft.setTextColor(col(HintBtn::OK),    th.bg); _tft.print(edit ? "OK+  " : "OK   ");
+    _tft.setTextColor(col(HintBtn::BACK),  th.bg); _tft.print(edit ? "BACK+" : "BACK");
 }

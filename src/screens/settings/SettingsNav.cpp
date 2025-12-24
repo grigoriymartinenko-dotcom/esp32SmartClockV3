@@ -5,9 +5,10 @@
 // ============================================================================
 int SettingsScreen::submenuItemsCount() const {
     switch (_level) {
-        case Level::TIMEZONE: return 2; // UTC, DST
-        case Level::TIME:     return 1; // Source
-        case Level::NIGHT:    return 3; // Mode, Start, End
+        case Level::TIMEZONE: return 2;
+        case Level::TIME:     return 1;
+        case Level::NIGHT:    return 3;
+        case Level::WIFI:     return 1;   // ✅
         case Level::ROOT:     return (int)(sizeof(MENU) / sizeof(MENU[0]));
     }
     return 1;

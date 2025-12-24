@@ -8,6 +8,7 @@
 #include "services/UiVersionService.h"
 #include "services/TimeService.h"
 #include "services/PreferencesService.h"
+#include "services/WifiService.h"
 
 // Типы экрана
 #include "screens/settings/SettingsTypes.h"
@@ -18,11 +19,10 @@
  * Экран настроек устройства.
  *
  * Разбиение по файлам:
- *  - SettingsScreen.cpp  — glue / кнопки / lifecycle
- *  - SettingsDraw.cpp    — отрисовка
- *  - SettingsNav.cpp     — навигация
- *  - SettingsEdit.cpp    — изменение значений
- *  - SettingsTypes.h     — enum / POD-типы
+ *  - SettingsScreen.cpp        — glue / lifecycle / кнопки
+ *  - settings/SettingsDraw.cpp — отрисовка
+ *  - settings/SettingsNav.cpp  — навигация
+ *  - settings/SettingsEdit.cpp — редактирование
  */
 
 class SettingsScreen : public Screen {
@@ -33,6 +33,7 @@ public:
         LayoutService& layoutService,
         NightService& nightService,
         TimeService& timeService,
+        WifiService& wifiService,
         UiVersionService& uiVersion
     );
 
@@ -41,7 +42,7 @@ public:
     void update() override;
 
     bool hasStatusBar() const override { return false; }
-    bool hasBottomBar() const override { return false; }
+    bool hasBottomBar() const override { return true; }
 
     void onThemeChanged() override;
 
@@ -58,35 +59,36 @@ public:
     void clearExitRequest();
 
 private:
-    // ===== Типы (алиасы для читаемости) =====
+    // ===== Типы =====
     using Level    = SettingsTypes::Level;
     using UiMode   = SettingsTypes::UiMode;
     using HintBtn  = SettingsTypes::HintBtn;
     using MenuItem = SettingsTypes::MenuItem;
 
-private:
-    // ===== DRAW =====
+
+    // ===== DRAW (SettingsDraw.cpp) =====
+
+protected:
+    // ===== DRAW (implemented in settings/*.cpp) =====
     void redrawAll();
+void drawWifi();        // ← 🔥 ВАЖНО
     void drawRoot();
+    void drawTime();
     void drawNight();
     void drawTimezone();
-    void drawTime();
     void drawButtonHints();
-
+private:
     // ===== NAV / EDIT =====
-    void enterSubmenu(Level lvl);
-    void exitSubmenu(bool apply);
-
-    void enterEdit();
-    void exitEdit(bool apply);
-
     void navLeft();
     void navRight();
+    void enterEdit();
+    void exitEdit(bool apply);
     void editInc();
     void editDec();
+    int  submenuItemsCount() const;
 
-    // 🔴 ВАЖНО: helper для SettingsNav.cpp
-    int submenuItemsCount() const;
+    void enterSubmenu(Level lvl);
+    void exitSubmenu(bool apply);
 
 private:
     // ===== Hardware / services =====
@@ -96,6 +98,7 @@ private:
 
     NightService&     _night;
     TimeService&      _time;
+    WifiService&      _wifi;
     UiVersionService& _ui;
 
     // ===== UI STATE =====
@@ -116,18 +119,18 @@ private:
     bool  _needFullClear  = true;
     Level _lastDrawnLevel = Level::ROOT;
 
-    // ===== Time source =====
-    TimeService::Mode _tmpTimeMode = TimeService::AUTO;
-    TimeService::Mode _bakTimeMode = TimeService::AUTO;
-
     // ===== ROOT MENU =====
     static constexpr MenuItem MENU[] = {
-        { "Wi-Fi",      Level::ROOT     },
+        { "Wi-Fi",      Level::WIFI     },
         { "Timezone",   Level::TIMEZONE },
         { "Time",       Level::TIME     },
         { "Night mode", Level::NIGHT    },
         { "About",      Level::ROOT     }
     };
+
+    // ===== Time =====
+    TimeService::Mode _tmpTimeMode = TimeService::AUTO;
+    TimeService::Mode _bakTimeMode = TimeService::AUTO;
 
     // ===== Night =====
     NightService::Mode _tmpMode = NightService::Mode::AUTO;
@@ -151,4 +154,8 @@ private:
     static constexpr int32_t TZ_STEP = 900;
     static constexpr int32_t TZ_MIN  = -43200;
     static constexpr int32_t TZ_MAX  =  50400;
+
+    // ===== Wi-Fi =====
+    bool _tmpWifiOn = true;
+    bool _bakWifiOn = true;
 };

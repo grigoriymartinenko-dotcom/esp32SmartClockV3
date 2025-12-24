@@ -1,7 +1,7 @@
 #include "services/PreferencesService.h"
 
 static constexpr uint16_t EEPROM_BASE = 0x0000;
-static constexpr uint8_t  PREF_VERSION = 5; // ⬅️ bump (был 4)
+static constexpr uint8_t  PREF_VERSION = 6; // 🔹 БЫЛ 5 → СТАЛ 6
 
 PreferencesService::PreferencesService(uint8_t addr)
     : eepromAddr(addr)
@@ -28,24 +28,28 @@ bool PreferencesService::isValid(const PreferencesData& d) const {
 }
 
 void PreferencesService::applyDefaults() {
-    data.version     = PREF_VERSION;
+    data.version = PREF_VERSION;
 
     // ===== Night =====
-    data.nightMode   = static_cast<uint8_t>(NightModePref::AUTO);
-    data.nightStart  = 22 * 60;
-    data.nightEnd    = 6 * 60;
+    data.nightMode  = static_cast<uint8_t>(NightModePref::AUTO);
+    data.nightStart = 22 * 60;
+    data.nightEnd   = 6 * 60;
 
     // ===== Time =====
-    data.timeSource  = static_cast<uint8_t>(TimeSourcePref::AUTO);
+    data.timeSource = static_cast<uint8_t>(TimeSourcePref::AUTO);
 
     // ===== Timezone =====
     data.tzGmtOffset = 2 * 3600;
     data.tzDstOffset = 3600;
 
-    data.brightness  = 80;
-    data.lastScreen  = 0;
+    // ===== Wi-Fi =====
+    data.wifiEnabled = 1;   // 🔹 ВКЛ по умолчанию
 
-    data.crc         = calcCrc(data);
+    // ===== Other =====
+    data.brightness = 80;
+    data.lastScreen = 0;
+
+    data.crc = calcCrc(data);
 }
 
 void PreferencesService::resetToDefaults() {
@@ -90,6 +94,11 @@ int32_t PreferencesService::tzDstOffset() const {
     return data.tzDstOffset;
 }
 
+// ===== Wi-Fi =====
+bool PreferencesService::wifiEnabled() const {
+    return data.wifiEnabled != 0;
+}
+
 // =====================================================
 // setters
 // =====================================================
@@ -109,6 +118,11 @@ void PreferencesService::setTimeSource(TimeSourcePref s) {
 void PreferencesService::setTimezone(int32_t gmtOffset, int32_t dstOffset) {
     data.tzGmtOffset = gmtOffset;
     data.tzDstOffset = dstOffset;
+}
+
+// ===== Wi-Fi =====
+void PreferencesService::setWifiEnabled(bool on) {
+    data.wifiEnabled = on ? 1 : 0;
 }
 
 // =====================================================
