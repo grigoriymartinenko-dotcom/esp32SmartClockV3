@@ -7,15 +7,10 @@
  *  - ON / OFF
  *  - CONNECTING / ONLINE / ERROR
  *  - ASYNC scan сетей
+ *  - CONNECT к выбранному SSID
  *
- * КРИТИЧЕСКИ ВАЖНО:
- *  ESP32 НЕ сканирует эфир корректно,
- *  если STA уже был активен.
- *
- *  Единственный надёжный способ:
- *   - WIFI_OFF
- *   - WIFI_STA
- *   - PASSIVE scan
+ * ИНВАРИАНТ:
+ *  Wi-Fi OFF ⇒ НИКАКИХ scan / connect
  */
 
 // ============================================================================
@@ -34,8 +29,10 @@ WifiService::WifiService(
 // ============================================================================
 void WifiService::begin() {
     _enabled = _prefs.wifiEnabled();
-    if (_enabled) start();
-    else          stop();
+    if (_enabled)
+        start();
+    else
+        stop();
 }
 
 // ============================================================================
@@ -43,24 +40,39 @@ void WifiService::begin() {
 // ============================================================================
 void WifiService::update() {
 
+    // ------------------------------------------------------------------------
+    // 🔥 FIX: Wi-Fi OFF → НИЧЕГО не делаем, включая scan
+    // ------------------------------------------------------------------------
     if (!_enabled)
         return;
 
     wl_status_t st = WiFi.status();
 
+    // ------------------------------------------------------------------------
+    // CONNECTED → ONLINE
+    // ------------------------------------------------------------------------
     if (st == WL_CONNECTED) {
         if (_state != State::ONLINE) {
             _state = State::ONLINE;
             _ui.bump(UiChannel::WIFI);
         }
+        return;
     }
-    else if (_state == State::CONNECTING) {
+
+    // ------------------------------------------------------------------------
+    // CONNECTING → timeout → ERROR
+    // ------------------------------------------------------------------------
+    if (_state == State::CONNECTING) {
         if (millis() - _connectStartMs > CONNECT_TIMEOUT_MS) {
             _state = State::ERROR;
+            WiFi.disconnect(true);
             _ui.bump(UiChannel::WIFI);
         }
     }
 
+    // ------------------------------------------------------------------------
+    // ASYNC SCAN RESULT
+    // ------------------------------------------------------------------------
     if (_scanInProgress) {
 
         int res = WiFi.scanComplete();
@@ -73,7 +85,6 @@ void WifiService::update() {
         _ssids.clear();
 
         if (res == WIFI_SCAN_FAILED) {
-            Serial.println("[WiFi] scan failed");
             _scanCount = 0;
             _ui.bump(UiChannel::WIFI);
             return;
@@ -87,8 +98,6 @@ void WifiService::update() {
         }
 
         WiFi.scanDelete();
-
-        Serial.printf("[WiFi] scan finished: %d networks\n", res);
         _ui.bump(UiChannel::WIFI);
     }
 }
@@ -97,6 +106,7 @@ void WifiService::update() {
 // ENABLE / DISABLE
 // ============================================================================
 void WifiService::setEnabled(bool on) {
+
     if (_enabled == on)
         return;
 
@@ -104,7 +114,23 @@ void WifiService::setEnabled(bool on) {
     _prefs.setWifiEnabled(on);
     _prefs.save();
 
-    on ? start() : stop();
+    if (on) {
+        start();
+    } else {
+
+        // --------------------------------------------------------------------
+        // 🔥 FIX: ПРИНУДИТЕЛЬНО останавливаем scan при OFF
+        // --------------------------------------------------------------------
+        if (_scanInProgress) {
+            WiFi.scanDelete();
+            _scanInProgress = false;
+            _scanFinished  = false;
+            _scanCount = 0;
+            _ssids.clear();
+        }
+
+        stop();
+    }
 }
 
 bool WifiService::isEnabled() const {
@@ -120,8 +146,10 @@ WifiService::State WifiService::state() const {
 // ============================================================================
 void WifiService::start() {
     WiFi.mode(WIFI_STA);
+
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
+
     WiFi.begin();
 
     _connectStartMs = millis();
@@ -138,16 +166,48 @@ void WifiService::stop() {
 }
 
 // ============================================================================
-// SCAN (ASYNC, PASSIVE) — ФИНАЛ
+// CONNECT TO SELECTED SSID
+// ============================================================================
+void WifiService::connect(const char* ssid) {
+
+    if (!_enabled)
+        return;
+
+    if (!ssid || !ssid[0])
+        return;
+
+    Serial.printf("[WiFi] connect to '%s'\n", ssid);
+
+    // гарантируем чистое подключение
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_STA);
+
+    WiFi.setAutoConnect(false);
+    WiFi.setAutoReconnect(false);
+
+    WiFi.begin(ssid);
+
+    _connectStartMs = millis();
+    _state = State::CONNECTING;
+    _ui.bump(UiChannel::WIFI);
+}
+
+// ============================================================================
+// SCAN (ASYNC, PASSIVE)
 // ============================================================================
 void WifiService::startScan() {
+
+    // ------------------------------------------------------------------------
+    // 🔥 FIX: НЕЛЬЗЯ сканировать, если Wi-Fi выключен
+    // ------------------------------------------------------------------------
+    if (!_enabled)
+        return;
 
     if (_scanInProgress)
         return;
 
     Serial.println("[WiFi] start async scan");
 
-    // ❗ ПОЛНЫЙ RESET STA
     WiFi.mode(WIFI_OFF);
     WiFi.mode(WIFI_STA);
 
@@ -155,11 +215,7 @@ void WifiService::startScan() {
     WiFi.setAutoReconnect(false);
 
     WiFi.scanDelete();
-
-    // async = true
-    // showHidden = true
-    // passive = true  ← КЛЮЧ
-    WiFi.scanNetworks(true, false, true);
+    WiFi.scanNetworks(true, false, true); // async + hidden + passive
 
     _scanInProgress = true;
     _scanFinished  = false;
@@ -188,4 +244,23 @@ const char* WifiService::ssidAt(int i) const {
     if (i < 0 || i >= (int)_ssids.size())
         return "";
     return _ssids[i].c_str();
+}
+void WifiService::connect(const char* ssid, const char* pass) {
+
+    if (!_enabled || !ssid || !ssid[0])
+        return;
+
+    Serial.printf("[WiFi] connect to '%s' with password\n", ssid);
+
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_STA);
+
+    WiFi.setAutoConnect(false);
+    WiFi.setAutoReconnect(false);
+
+    WiFi.begin(ssid, pass);
+
+    _connectStartMs = millis();
+    _state = State::CONNECTING;
+    _ui.bump(UiChannel::WIFI);
 }

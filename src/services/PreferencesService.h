@@ -26,21 +26,23 @@ struct __attribute__((packed)) PreferencesData {
     uint8_t  version;
 
     // ===== Night =====
-    uint8_t  nightMode;     // NightModePref
-    uint16_t nightStart;    // minutes 0..1439
-    uint16_t nightEnd;      // minutes 0..1439
+    uint8_t  nightMode;
+    uint16_t nightStart;
+    uint16_t nightEnd;
 
     // ===== Time =====
-    uint8_t  timeSource;    // TimeSourcePref
+    uint8_t  timeSource;
 
     // ===== Timezone =====
-    int32_t  tzGmtOffset;   // seconds
-    int32_t  tzDstOffset;   // seconds
+    int32_t  tzGmtOffset;
+    int32_t  tzDstOffset;
 
     // ===== Wi-Fi =====
-// ===== Connectivity =====
-uint8_t wifiEnabled; // 0 = OFF, 1 = ON
+    uint8_t  wifiEnabled;
 
+    char     wifiSsid[32];
+    char     wifiPass[32];
+    uint8_t  wifiSaved;
 
     // ===== Other =====
     uint8_t  brightness;
@@ -55,29 +57,21 @@ public:
 
     void begin();
 
-    // ===== Night =====
-    NightModePref nightMode() const;
-    uint16_t nightStart() const;
-    uint16_t nightEnd() const;
+    // ===== Wi-Fi =====
+    bool wifiEnabled() const;
+    void setWifiEnabled(bool on);
 
+    bool hasWifiCredentials() const;
+    const char* wifiSsid() const;
+    const char* wifiPass() const;
 
-    void setNightMode(NightModePref m);
-    void setNightRange(uint16_t startMin, uint16_t endMin);
-
-    // ===== Time =====
-    TimeSourcePref timeSource() const;
-    void setTimeSource(TimeSourcePref s);
+    void setWifiCredentials(const char* ssid, const char* pass);
+    void clearWifiCredentials();
 
     // ===== Timezone =====
-    int32_t tzGmtOffset() const;
-    int32_t tzDstOffset() const;
-    void setTimezone(int32_t gmtOffset, int32_t dstOffset);
-
-    // ===== Wi-Fi =====
-    bool wifiEnabled() const;                 // 🔹 ДОБАВЛЕНО
-    void setWifiEnabled(bool on);              // 🔹 ДОБАВЛЕНО
-
-
+    int32_t tzGmtOffset() const;      // 🔥 ВОЗВРАЩЕНО
+    int32_t tzDstOffset() const;      // 🔥 ВОЗВРАЩЕНО
+    void setTimezone(int32_t gmt, int32_t dst);
 
     // ===== Save =====
     void save();

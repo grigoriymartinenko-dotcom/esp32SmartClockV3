@@ -13,14 +13,11 @@
  *  - ON / OFF
  *  - CONNECTING / ONLINE / ERROR
  *  - ASYNC scan сетей
+ *  - CONNECT к выбранному SSID
  *
  * ВАЖНО:
- *  Scan имеет ТРИ состояния:
- *   1) idle      — ещё не запускался
- *   2) scanning  — идёт асинхронный scan
- *   3) finished  — scan завершён (даже если сетей 0)
- *
- * UI НИКОГДА не должен угадывать состояние.
+ *  WifiService НЕ знает про UI.
+ *  Он только меняет State и делает ui.bump(WIFI).
  */
 
 class WifiService {
@@ -48,11 +45,14 @@ public:
     // состояние подключения
     State state() const;
 
+    // ===== CONNECT =====
+    void connect(const char* ssid);
+    void connect(const char* ssid, const char* pass); // 🔥 НОВОЕ
+
     // ===== SCAN =====
     void startScan();
-
-    bool isScanning() const;        // идёт ли scan прямо сейчас
-    bool isScanFinished() const;    // scan завершён (успех или ошибка)
+    bool isScanning() const;
+    bool isScanFinished() const;
 
     int  networksCount() const;
     const char* ssidAt(int i) const;
@@ -62,8 +62,8 @@ private:
     void stop();
 
     // ===== scan state =====
-    bool _scanInProgress = false;   // scan запущен и ещё не завершён
-    bool _scanFinished  = false;   // scan завершён (ДАЖЕ если сетей 0)
+    bool _scanInProgress = false;
+    bool _scanFinished  = false;
     int  _scanCount     = 0;
 
     // ===== deps =====

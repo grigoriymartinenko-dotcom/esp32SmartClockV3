@@ -1,5 +1,6 @@
 #pragma once
 #include <Adafruit_ST7735.h>
+#include <cstring>
 
 #include "core/Screen.h"
 #include "services/LayoutService.h"
@@ -10,7 +11,6 @@
 #include "services/PreferencesService.h"
 #include "services/WifiService.h"
 
-// Типы экрана
 #include "screens/settings/SettingsTypes.h"
 
 /*
@@ -18,11 +18,9 @@
  * --------------
  * Экран настроек устройства.
  *
- * Разбиение по файлам:
- *  - SettingsScreen.cpp        — glue / lifecycle / кнопки
- *  - settings/SettingsDraw.cpp — отрисовка
- *  - settings/SettingsNav.cpp  — навигация
- *  - settings/SettingsEdit.cpp — редактирование
+ * ВАЖНО:
+ *  Этот файл — ЕДИНСТВЕННЫЙ источник истины
+ *  для ВСЕХ Settings*.cpp файлов.
  */
 
 class SettingsScreen : public Screen {
@@ -58,42 +56,46 @@ public:
     bool exitRequested() const;
     void clearExitRequest();
 
+protected:
+    // ===== DRAW =====
+    void redrawAll();
+    void drawRoot();
+    void drawWifi();
     void drawWifiList();
+    void drawWifiPassword();
+    void drawTime();
+    void drawNight();
+    void drawTimezone();
+    void drawButtonHints();
+
 private:
-    // ===== Типы =====
     using Level    = SettingsTypes::Level;
     using UiMode   = SettingsTypes::UiMode;
     using HintBtn  = SettingsTypes::HintBtn;
     using MenuItem = SettingsTypes::MenuItem;
 
-
-    // ===== DRAW (SettingsDraw.cpp) =====
-
-protected:
-    // ===== DRAW (implemented in settings/*.cpp) =====
-protected:
-    void redrawAll();
-    void drawWifi();
-    void drawRoot();
-    void drawTime();
-    void drawNight();
-    void drawTimezone();
-    void drawButtonHints();
-private:
-    // ===== NAV / EDIT =====
+    // ===== NAVIGATION =====
     void navLeft();
     void navRight();
+
+    // ===== EDIT MODE (реализовано в SettingsEdit.cpp) =====
     void enterEdit();
     void exitEdit(bool apply);
     void editInc();
     void editDec();
-    int  submenuItemsCount() const;
 
+    // ===== SUBMENU =====
     void enterSubmenu(Level lvl);
     void exitSubmenu(bool apply);
 
+    // ===== WIFI HANDLERS (SettingsWifi.cpp) =====
+    bool handleWifiShortOk();
+    bool handleWifiShortBack();
+    bool handleWifiLongOk();
+    bool handleWifiLongBack();
+
 private:
-    // ===== Hardware / services =====
+    // ===== SERVICES =====
     Adafruit_ST7735&  _tft;
     LayoutService&    _layout;
     ButtonBar         _bar;
@@ -110,16 +112,31 @@ private:
     Level  _level = Level::ROOT;
     UiMode _mode  = UiMode::NAV;
 
-// ===== Wi-Fi =====
-    int _selected    = 0;   // ROOT menu cursor
-    int _subSelected = 0;   // submenu cursor
-    int _wifiListTop = 0;   // индекс верхней видимой строки списка Wi-Fi
+    // ===== ROOT / SUBMENU CURSORS =====
+    int _selected    = 0;
+    int _subSelected = 0;
 
-    // ===== Button feedback =====
+    // ===== WIFI LIST =====
+    int _wifiListTop      = 0;
+    int _wifiListSelected = 0;
+
+    // ===== WIFI PASSWORD =====
+    static constexpr int WIFI_PASS_MAX = 32;
+    char _wifiPass[WIFI_PASS_MAX + 1]{};
+    int  _wifiPassLen = 0;
+    int  _wifiCharIdx = 0;
+
+    static constexpr const char* PASS_CHARS =
+        "abcdefghijklmnopqrstuvwxyz"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "0123456789"
+        "_-@.!";
+
+    // ===== BUTTON FEEDBACK =====
     HintBtn _pressedBtn = HintBtn::NONE;
     uint8_t _hintFlash  = 0;
 
-    // ===== Anti-flicker =====
+    // ===== ANTI-FLICKER =====
     bool  _needFullClear  = true;
     Level _lastDrawnLevel = Level::ROOT;
 
@@ -132,11 +149,11 @@ private:
         { "About",      Level::ROOT     }
     };
 
-    // ===== Time =====
+    // ===== TIME =====
     TimeService::Mode _tmpTimeMode = TimeService::AUTO;
     TimeService::Mode _bakTimeMode = TimeService::AUTO;
 
-    // ===== Night =====
+    // ===== NIGHT =====
     NightService::Mode _tmpMode = NightService::Mode::AUTO;
     NightService::Mode _bakMode = NightService::Mode::AUTO;
 
@@ -148,7 +165,7 @@ private:
 
     static constexpr int NIGHT_STEP_MIN = 15;
 
-    // ===== Timezone =====
+    // ===== TIMEZONE =====
     int32_t _tmpTzSec = 0;
     int32_t _bakTzSec = 0;
 
@@ -159,10 +176,7 @@ private:
     static constexpr int32_t TZ_MIN  = -43200;
     static constexpr int32_t TZ_MAX  =  50400;
 
-    // ===== Wi-Fi =====
+    // ===== WIFI =====
     bool _tmpWifiOn = true;
     bool _bakWifiOn = true;
-    // ===== Wi-Fi list =====
-// выбранный SSID в списке сканирования
-int _wifiListSelected = 0;
 };

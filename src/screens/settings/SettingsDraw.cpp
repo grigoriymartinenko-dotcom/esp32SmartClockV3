@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
+#include <cstring>   // 🔥 strlen / memset
 
 /*
  * SettingsDraw.cpp
@@ -46,12 +47,13 @@ void SettingsScreen::redrawAll() {
     }
 
     switch (_level) {
-        case Level::ROOT:      drawRoot();     break;
-        case Level::WIFI:      drawWifi();     break;
-        case Level::WIFI_LIST: drawWifiList(); break;
-        case Level::TIME:      drawTime();     break;
-        case Level::NIGHT:     drawNight();    break;
-        case Level::TIMEZONE:  drawTimezone(); break;
+        case Level::ROOT:      drawRoot();         break;
+        case Level::WIFI:      drawWifi();         break;
+        case Level::WIFI_LIST: drawWifiList();     break;
+        case Level::WIFI_PASSWORD: drawWifiPassword(); break; // ✅ FIX: парольный экран
+        case Level::TIME:      drawTime();         break;
+        case Level::NIGHT:     drawNight();        break;
+        case Level::TIMEZONE:  drawTimezone();     break;
     }
 
     drawButtonHints();
@@ -159,7 +161,7 @@ void SettingsScreen::drawWifiList() {
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(8, y + 4);
         _tft.print(sel ? "> " : "  ");
-        _tft.print("Rescan----------");
+        _tft.print("|-----Rescan-----|");
 
         return;
     }
@@ -167,24 +169,24 @@ void SettingsScreen::drawWifiList() {
     // ------------------------------------------------------------------------
     // 3) NETWORK LIST
     // ------------------------------------------------------------------------
-constexpr int VISIBLE_ROWS = 4;
+    constexpr int VISIBLE_ROWS = 4;
 
-for (int i = 0; i < VISIBLE_ROWS; i++) {
+    for (int i = 0; i < VISIBLE_ROWS; i++) {
 
-    int idx = _wifiListTop + i;
+        int idx = _wifiListTop + i;
 
-    if (idx >= _wifi.networksCount())
-        break;
+        if (idx >= _wifi.networksCount())
+            break;
 
-    int y = listTop + i * rowH;
+        int y = listTop + i * rowH;
 
-    bool sel = (idx == _wifiListSelected);
+        bool sel = (idx == _wifiListSelected);
 
-    _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-    _tft.setCursor(8, y + 4);
-    _tft.print(sel ? "> " : "  ");
-    _tft.print(_wifi.ssidAt(idx));
-}
+        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+        _tft.setCursor(8, y + 4);
+        _tft.print(sel ? "> " : "  ");
+        _tft.print(_wifi.ssidAt(idx));
+    }
 
     // ------------------------------------------------------------------------
     // 4) RESCAN (всегда последний пункт)
@@ -195,7 +197,36 @@ for (int i = 0; i < VISIBLE_ROWS; i++) {
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(8, y + 4);
         _tft.print(sel ? "> " : "  ");
-        _tft.print("Rescan----------");
+        _tft.print("|-----Rescan-----|");
+    }
+    // ------------------------------------------------------------------------
+    // CONNECTION STATUS (CONNECTING / ONLINE / ERROR)
+    // ------------------------------------------------------------------------
+    WifiService::State st = _wifi.state();
+
+    int yStatus = _layout.buttonBarY() - 32;
+
+    _tft.fillRect(0, yStatus, _tft.width(), 16, th.bg);
+    _tft.setCursor(10, yStatus + 4+18);
+
+    switch (st) {
+        case WifiService::State::CONNECTING:
+            _tft.setTextColor(th.warn, th.bg);
+            _tft.print("Connecting...");
+            break;
+
+        case WifiService::State::ONLINE:
+            _tft.setTextColor(th.textPrimary, th.bg);
+            _tft.print("Connected");
+            break;
+
+        case WifiService::State::ERROR:
+            _tft.setTextColor(th.error, th.bg);
+            _tft.print("Connection error");
+            break;
+
+        default:
+            break;
     }
 }
 
@@ -382,4 +413,37 @@ void SettingsScreen::drawButtonHints() {
     _tft.setTextColor(col(HintBtn::RIGHT), th.bg); _tft.print(">   ");
     _tft.setTextColor(col(HintBtn::OK),    th.bg); _tft.print(edit ? "OK+  " : "OK   ");
     _tft.setTextColor(col(HintBtn::BACK),  th.bg); _tft.print(edit ? "BACK+" : "BACK");
+}
+
+void SettingsScreen::drawWifiPassword() {
+
+    const Theme& th = theme();
+
+    // ✅ очищаем рабочую область (всё кроме нижнего бара)
+    int top = 0;
+    int h   = _layout.buttonBarY();
+    _tft.fillRect(0, top, _tft.width(), h, th.bg);
+
+    _tft.setTextSize(2);
+    _tft.setCursor(10, 10);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Wi-Fi pass");
+
+    _tft.setTextSize(1);
+
+    _tft.setCursor(10, 40);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Char:");
+    _tft.setCursor(60, 40);
+    _tft.setTextColor(th.select, th.bg);
+    _tft.print(PASS_CHARS[_wifiCharIdx]);
+
+    _tft.setCursor(10, 60);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Pass:");
+
+    _tft.setCursor(60, 60);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    for (int i = 0; i < _wifiPassLen; i++)
+        _tft.print('*');
 }

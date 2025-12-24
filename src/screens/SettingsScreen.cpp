@@ -1,26 +1,10 @@
 #include "screens/SettingsScreen.h"
-#include <Adafruit_GFX.h>
 #include <Arduino.h>
+#include <cstring>
 
-/*
- * SettingsScreen.cpp
- * ------------------
- * ЛОГИКА экрана Settings.
- *
- * ПРАВИЛА:
- *  - НИКАКОЙ отрисовки (это в SettingsDraw.cpp)
- *  - НИКАКИХ delay / таймеров
- *  - ТОЛЬКО реакция на кнопки и смена UI-состояния
- */
-
-// ============================================================================
-// PreferencesService — глобальный объект
-// ============================================================================
 extern PreferencesService prefs;
 
-// ============================================================================
 // static constexpr arrays
-// ============================================================================
 constexpr SettingsScreen::MenuItem SettingsScreen::MENU[];
 
 // ============================================================================
@@ -49,6 +33,7 @@ SettingsScreen::SettingsScreen(
 // begin
 // ============================================================================
 void SettingsScreen::begin() {
+
     _exitRequested = false;
 
     _level = Level::ROOT;
@@ -56,6 +41,13 @@ void SettingsScreen::begin() {
 
     _selected    = 0;
     _subSelected = 0;
+
+    _wifiListTop      = 0;
+    _wifiListSelected = 0;
+
+    memset(_wifiPass, 0, sizeof(_wifiPass));
+    _wifiPassLen = 0;
+    _wifiCharIdx = 0;
 
     _dirty = true;
 
@@ -70,17 +62,8 @@ void SettingsScreen::begin() {
 // ============================================================================
 void SettingsScreen::update() {
 
-    /*
-     * WiFiService делает _ui.bump(UiChannel::WIFI), когда:
-     *  - меняется статус Wi-Fi
-     *  - начинается scan
-     *  - scan завершается
-     *
-     * Мы обязаны перерисовать экран.
-     */
-    if (_ui.changed(UiChannel::WIFI)) {
+    if (_ui.changed(UiChannel::WIFI))
         _dirty = true;
-    }
 
     if (_hintFlash > 0) {
         _hintFlash--;
@@ -100,144 +83,74 @@ void SettingsScreen::onShortLeft() {
     _pressedBtn = HintBtn::LEFT;
     _hintFlash  = 3;
 
-    if (_mode == UiMode::NAV) navLeft();
-    else                      editDec();
+    if (_level == Level::WIFI_PASSWORD) {
+        const size_t n = strlen(PASS_CHARS);
+        _wifiCharIdx = (_wifiCharIdx == 0) ? (int)(n - 1) : (_wifiCharIdx - 1);
+        _dirty = true;
+        return;
+    }
+
+    navLeft();
 }
 
 void SettingsScreen::onShortRight() {
     _pressedBtn = HintBtn::RIGHT;
     _hintFlash  = 3;
 
-    if (_mode == UiMode::NAV) navRight();
-    else                      editInc();
+    if (_level == Level::WIFI_PASSWORD) {
+        const size_t n = strlen(PASS_CHARS);
+        _wifiCharIdx = (int)((_wifiCharIdx + 1) % (int)n);
+        _dirty = true;
+        return;
+    }
+
+    navRight();
 }
 
 void SettingsScreen::onShortOk() {
     _pressedBtn = HintBtn::OK;
     _hintFlash  = 3;
 
-    // =====================================================================
-    // ROOT → вход в выбранный раздел
-    // =====================================================================
-    if (_mode == UiMode::NAV && _level == Level::ROOT) {
+    // ROOT
+    if (_level == Level::ROOT) {
         enterSubmenu(MENU[_selected].target);
         return;
     }
 
-    // =====================================================================
-    // WIFI MENU (State / Scan)
-    // =====================================================================
-    if (_mode == UiMode::NAV && _level == Level::WIFI) {
-
-        // -------------------------------------------------------------
-        // 0 = State (ON / OFF)
-        // → переходим в EDIT
-        // -------------------------------------------------------------
-        if (_subSelected == 0) {
-            enterEdit();
-            return;
-        }
-
-        // -------------------------------------------------------------
-        // 1 = Scan
-        // → запускаем scan
-        // → переходим в WIFI_LIST
-        // -------------------------------------------------------------
-        if (_subSelected == 1) {
-            _wifi.startScan();
-
-            // сбрасываем позицию списка
-            _wifiListSelected = 0;
-            _wifiListTop      = 0;
-
-            enterSubmenu(Level::WIFI_LIST);
-            return;
-        }
-    }
-
-    // =====================================================================
-    // WIFI LIST
-    // =====================================================================
-    if (_mode == UiMode::NAV && _level == Level::WIFI_LIST) {
-
-        /*
-         * На этом этапе:
-         *  - OK = Rescan
-         *  - подключение к сети будет добавлено позже
-         */
-        _wifi.startScan();
-
-        _wifiListSelected = 0;
-        _wifiListTop      = 0;
-
-        _dirty = true;
+    // Wi-Fi handled externally
+    if (handleWifiShortOk())
         return;
-    }
 
-    // =====================================================================
-    // FALLBACK
-    // =====================================================================
-    // Для остальных пунктов — обычный вход в EDIT
-    if (_mode == UiMode::NAV) {
-        enterEdit();
-    }
-}
-
-void SettingsScreen::onLongOk() {
-    if (_mode == UiMode::EDIT)
-        exitEdit(true);
+    _dirty = true;
 }
 
 void SettingsScreen::onShortBack() {
     _pressedBtn = HintBtn::BACK;
     _hintFlash  = 3;
 
-    if (_mode == UiMode::EDIT) {
-        exitEdit(false);
+    if (handleWifiShortBack())
+        return;
+
+    if (_level != Level::ROOT) {
+        enterSubmenu(Level::ROOT);
         return;
     }
 
-    if (_level == Level::ROOT)
-        _exitRequested = true;
-    else
-        exitSubmenu(true);
+    _exitRequested = true;
 }
 
-void SettingsScreen::onLongBack() {}
-
-// ============================================================================
-// SUBMENU CONTROL
-// ============================================================================
-void SettingsScreen::enterSubmenu(Level lvl) {
-    _level = lvl;
-    _mode  = UiMode::NAV;
-
-    _subSelected = 0;
-    _needFullClear = true;
-
-    if (lvl == Level::WIFI) {
-        // временное состояние для EDIT
-        _tmpWifiOn = _wifi.isEnabled();
-    }
-
-    _dirty = true;
+void SettingsScreen::onLongOk() {
+    if (handleWifiLongOk())
+        return;
 }
 
-void SettingsScreen::exitSubmenu(bool apply) {
-
-    if (_level == Level::WIFI && apply) {
-        _wifi.setEnabled(_tmpWifiOn);
-    }
-
-    _level = Level::ROOT;
-    _mode  = UiMode::NAV;
-
-    _needFullClear = true;
-    _dirty = true;
+void SettingsScreen::onLongBack() {
+    if (handleWifiLongBack())
+        return;
 }
 
 // ============================================================================
-// EXIT FLAGS
+// EXIT
 // ============================================================================
 bool SettingsScreen::exitRequested() const {
     return _exitRequested;
@@ -246,7 +159,23 @@ bool SettingsScreen::exitRequested() const {
 void SettingsScreen::clearExitRequest() {
     _exitRequested = false;
 }
+
+// ============================================================================
+// THEME
+// ============================================================================
 void SettingsScreen::onThemeChanged() {
+    _needFullClear = true;
+    _dirty = true;
+}
+
+// ============================================================================
+// SUBMENU
+// ============================================================================
+void SettingsScreen::enterSubmenu(Level lvl) {
+    _level = lvl;
+    _mode  = UiMode::NAV;
+    _subSelected = 0;
+
     _needFullClear = true;
     _dirty = true;
 }

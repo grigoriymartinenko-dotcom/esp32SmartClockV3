@@ -18,13 +18,14 @@ namespace SettingsTypes {
      * -----
      * Текущий уровень экрана Settings
      */
-    enum class Level : uint8_t {
-        ROOT,       // корневое меню
-        WIFI,
-        WIFI_LIST,     // 🔥 НОВОЕ: список сетей
-        NIGHT,      // настройки ночного режима
-        TIMEZONE,   // таймзона / DST
-        TIME        // источник времени
+enum class Level : uint8_t {
+        ROOT,           // корневое меню
+        WIFI,           // Wi-Fi ON / OFF / Scan
+        WIFI_LIST,      // список сетей
+        WIFI_PASSWORD,  // 🔥 ВВОД ПАРОЛЯ
+        NIGHT,
+        TIMEZONE,
+        TIME
     };
 
     /*

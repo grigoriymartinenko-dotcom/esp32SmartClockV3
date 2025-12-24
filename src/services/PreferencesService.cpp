@@ -1,7 +1,7 @@
 #include "services/PreferencesService.h"
 
 static constexpr uint16_t EEPROM_BASE = 0x0000;
-static constexpr uint8_t  PREF_VERSION = 6; // 🔹 БЫЛ 5 → СТАЛ 6
+static constexpr uint8_t  PREF_VERSION = 7;
 
 PreferencesService::PreferencesService(uint8_t addr)
     : eepromAddr(addr)
@@ -28,26 +28,17 @@ bool PreferencesService::isValid(const PreferencesData& d) const {
 }
 
 void PreferencesService::applyDefaults() {
+    memset(&data, 0, sizeof(data));
+
     data.version = PREF_VERSION;
 
-    // ===== Night =====
-    data.nightMode  = static_cast<uint8_t>(NightModePref::AUTO);
-    data.nightStart = 22 * 60;
-    data.nightEnd   = 6 * 60;
-
-    // ===== Time =====
-    data.timeSource = static_cast<uint8_t>(TimeSourcePref::AUTO);
-
-    // ===== Timezone =====
+    // ===== Timezone defaults =====
     data.tzGmtOffset = 2 * 3600;
     data.tzDstOffset = 3600;
 
     // ===== Wi-Fi =====
-    data.wifiEnabled = 1;   // 🔹 ВКЛ по умолчанию
-
-    // ===== Other =====
-    data.brightness = 80;
-    data.lastScreen = 0;
+    data.wifiEnabled = 1;
+    data.wifiSaved   = 0;
 
     data.crc = calcCrc(data);
 }
@@ -68,24 +59,43 @@ void PreferencesService::save() {
 }
 
 // =====================================================
-// getters
+// Wi-Fi
 // =====================================================
-NightModePref PreferencesService::nightMode() const {
-    return static_cast<NightModePref>(data.nightMode);
+bool PreferencesService::wifiEnabled() const {
+    return data.wifiEnabled != 0;
 }
 
-uint16_t PreferencesService::nightStart() const {
-    return data.nightStart;
+void PreferencesService::setWifiEnabled(bool on) {
+    data.wifiEnabled = on ? 1 : 0;
 }
 
-uint16_t PreferencesService::nightEnd() const {
-    return data.nightEnd;
+bool PreferencesService::hasWifiCredentials() const {
+    return data.wifiSaved != 0;
 }
 
-TimeSourcePref PreferencesService::timeSource() const {
-    return static_cast<TimeSourcePref>(data.timeSource);
+const char* PreferencesService::wifiSsid() const {
+    return data.wifiSsid;
 }
 
+const char* PreferencesService::wifiPass() const {
+    return data.wifiPass;
+}
+
+void PreferencesService::setWifiCredentials(const char* ssid, const char* pass) {
+    strncpy(data.wifiSsid, ssid, sizeof(data.wifiSsid) - 1);
+    strncpy(data.wifiPass, pass, sizeof(data.wifiPass) - 1);
+    data.wifiSaved = 1;
+}
+
+void PreferencesService::clearWifiCredentials() {
+    data.wifiSaved = 0;
+    data.wifiSsid[0] = 0;
+    data.wifiPass[0] = 0;
+}
+
+// =====================================================
+// Timezone
+// =====================================================
 int32_t PreferencesService::tzGmtOffset() const {
     return data.tzGmtOffset;
 }
@@ -94,35 +104,9 @@ int32_t PreferencesService::tzDstOffset() const {
     return data.tzDstOffset;
 }
 
-// ===== Wi-Fi =====
-bool PreferencesService::wifiEnabled() const {
-    return data.wifiEnabled != 0;
-}
-
-// =====================================================
-// setters
-// =====================================================
-void PreferencesService::setNightMode(NightModePref m) {
-    data.nightMode = static_cast<uint8_t>(m);
-}
-
-void PreferencesService::setNightRange(uint16_t startMin, uint16_t endMin) {
-    data.nightStart = constrain(startMin, 0, 1439);
-    data.nightEnd   = constrain(endMin,   0, 1439);
-}
-
-void PreferencesService::setTimeSource(TimeSourcePref s) {
-    data.timeSource = static_cast<uint8_t>(s);
-}
-
-void PreferencesService::setTimezone(int32_t gmtOffset, int32_t dstOffset) {
-    data.tzGmtOffset = gmtOffset;
-    data.tzDstOffset = dstOffset;
-}
-
-// ===== Wi-Fi =====
-void PreferencesService::setWifiEnabled(bool on) {
-    data.wifiEnabled = on ? 1 : 0;
+void PreferencesService::setTimezone(int32_t gmt, int32_t dst) {
+    data.tzGmtOffset = gmt;
+    data.tzDstOffset = dst;
 }
 
 // =====================================================
