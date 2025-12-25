@@ -4,12 +4,15 @@
 /*
  * ForecastScreen.cpp
  * ------------------
- * Реактивный экран прогноза с состояниями:
+ * Реактивный экран прогноза:
  *  - LOADING
  *  - READY
  *  - ERROR
  *
- * Никаких блокировок, никаких таймеров.
+ * Канон:
+ *  - рисует ТОЛЬКО в content-зоне
+ *  - не знает про BottomBar
+ *  - не чистит чужие зоны
  */
 
 ForecastScreen::ForecastScreen(
@@ -41,7 +44,6 @@ void ForecastScreen::begin() {
 
     resetCache();
     clearWorkArea();
-    hardClearBottom2px();
 
     _dirty = true;
 }
@@ -69,10 +71,10 @@ void ForecastScreen::onShortRight() {
 // ============================================================================
 void ForecastScreen::update() {
 
+    // ---- THEME ----
     if (themeChanged()) {
         resetCache();
         clearWorkArea();
-        hardClearBottom2px();
         _dirty = true;
     }
 
@@ -105,27 +107,14 @@ void ForecastScreen::update() {
         return;
     }
 
-// ================= READY =================
+    // ================= READY =================
+    if (_lastState != UiState::READY) {
+        clearWorkArea(); // стереть loading/error ОДИН раз
+    }
 
-// 🔥 если только что вышли из LOADING или ERROR —
-// 🔥 нужно стереть их зону ОДИН раз
-if (_lastState != UiState::READY) {
-    const Theme& th = theme();
-    const int y = _layout.clockY();
-
-    // зона, где рисовались Loading / Error
-    _tft.fillRect(
-        0,
-        y + 40,
-        _tft.width(),
-        24,
-        th.bg
-    );
-}
-
-const uint8_t total = _forecast.daysCount();
-const ForecastDay* d = _forecast.day(_dayIndex);
-if (!d) return;
+    const uint8_t total = _forecast.daysCount();
+    const ForecastDay* d = _forecast.day(_dayIndex);
+    if (!d) return;
 
     const int dayTemp   = (int)round(d->tempDay);
     const int nightTemp = (int)round(d->tempNight);
@@ -145,7 +134,6 @@ if (!d) return;
     _lastDayIndex = _dayIndex;
     _lastState = _state;
 
-    hardClearBottom2px();
     _dirty = false;
 }
 
@@ -165,13 +153,14 @@ bool ForecastScreen::themeChanged() const {
 
 void ForecastScreen::clearWorkArea() {
     const Theme& th = theme();
-    const int y = _layout.clockY();
-    _tft.fillRect(0, y, _tft.width(), _tft.height() - y, th.bg);
-}
 
-void ForecastScreen::hardClearBottom2px() {
-    const Theme& th = theme();
-    _tft.fillRect(0, _tft.height() - 2, _tft.width(), 2, th.bg);
+    _tft.fillRect(
+        0,
+        _layout.contentY(),
+        _tft.width(),
+        _layout.contentH(),
+        th.bg
+    );
 }
 
 // ============================================================================
@@ -182,10 +171,11 @@ void ForecastScreen::drawHeader(bool force, const ForecastDay* d,
     if (!force) return;
 
     const Theme& th = theme();
-    const int y0 = _layout.clockY();
+    const int baseY = _layout.contentY();
 
-    const int rectY = y0 + 6;
+    const int rectY = baseY + 6;
     const int rectH = 18;
+
     _tft.fillRect(0, rectY, _tft.width(), rectH, th.bg);
 
     _tft.setTextSize(1);
@@ -220,11 +210,11 @@ void ForecastScreen::drawLoading(bool force) {
     if (!force) return;
 
     const Theme& th = theme();
-    const int y = _layout.clockY();
+    const int baseY = _layout.contentY();
 
-    _tft.fillRect(0, y + 40, _tft.width(), 24, th.bg);
+    _tft.fillRect(0, baseY + 40, _tft.width(), 24, th.bg);
     _tft.setTextColor(th.textSecondary, th.bg);
-    _tft.setCursor(30, y + 52);
+    _tft.setCursor(30, baseY + 52);
     _tft.print("Loading...");
 }
 
@@ -232,11 +222,11 @@ void ForecastScreen::drawError(bool force) {
     if (!force) return;
 
     const Theme& th = theme();
-    const int y = _layout.clockY();
+    const int baseY = _layout.contentY();
 
-    _tft.fillRect(0, y + 40, _tft.width(), 24, th.bg);
+    _tft.fillRect(0, baseY + 40, _tft.width(), 24, th.bg);
     _tft.setTextColor(th.muted, th.bg);
-    _tft.setCursor(18, y + 52);
+    _tft.setCursor(18, baseY + 52);
     _tft.print("No forecast data");
 }
 
@@ -244,8 +234,8 @@ void ForecastScreen::drawRowDay(bool force, int dayTemp) {
     if (!force) return;
 
     const Theme& th = theme();
-    const int y0 = _layout.clockY();
-    const int rowY = y0 + 36;
+    const int baseY = _layout.contentY();
+    const int rowY = baseY + 36;
 
     _tft.fillRect(0, rowY, _tft.width(), 16, th.bg);
     _tft.setTextColor(th.textPrimary, th.bg);
@@ -257,8 +247,8 @@ void ForecastScreen::drawRowNight(bool force, int nightTemp) {
     if (!force) return;
 
     const Theme& th = theme();
-    const int y0 = _layout.clockY();
-    const int rowY = y0 + 54;
+    const int baseY = _layout.contentY();
+    const int rowY = baseY + 54;
 
     _tft.fillRect(0, rowY, _tft.width(), 16, th.bg);
     _tft.setTextColor(th.textPrimary, th.bg);
@@ -270,8 +260,8 @@ void ForecastScreen::drawRowHum(bool force, int hum) {
     if (!force) return;
 
     const Theme& th = theme();
-    const int y0 = _layout.clockY();
-    const int rowY = y0 + 72;
+    const int baseY = _layout.contentY();
+    const int rowY = baseY + 72;
 
     _tft.fillRect(0, rowY, _tft.width(), 16, th.bg);
     _tft.setTextColor(th.textPrimary, th.bg);

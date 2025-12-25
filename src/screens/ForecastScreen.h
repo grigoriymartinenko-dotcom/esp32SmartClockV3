@@ -58,7 +58,7 @@ private:
 
     // utils
     void clearWorkArea();
-    void hardClearBottom2px();
+    //void hardClearBottom2px();
     void resetCache();
     bool themeChanged() const;
 

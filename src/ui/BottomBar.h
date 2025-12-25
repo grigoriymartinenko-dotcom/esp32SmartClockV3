@@ -1,47 +1,79 @@
 #pragma once
 #include <Adafruit_ST7735.h>
 
-#include "services/ThemeService.h"
 #include "services/LayoutService.h"
-#include "services/DhtService.h"
+#include "services/ThemeService.h"
 
 /*
  * BottomBar
  * ---------
- * Нижняя информационная панель (температура / влажность).
+ * Универсальная нижняя панель кнопок.
  *
- * ПРАВИЛА:
- *  - НЕТ таймеров
- *  - НЕТ millis()
- *  - Рисует ТОЛЬКО через update()
- *  - Все события приходят СНАРУЖИ
+ * ПРИНЦИПЫ:
+ *  - чистый UI (без логики кнопок)
+ *  - экран ОПИСЫВАЕТ кнопки
+ *  - BottomBar только РИСУЕТ
+ *  - фиксированная геометрия и стиль
  */
+
 class BottomBar {
+public:
+    enum class Button : uint8_t {
+        LEFT = 0,
+        OK,
+        RIGHT,
+        BACK,
+        COUNT
+    };
+
+    struct ButtonState {
+        const char* label = nullptr;
+        bool enabled = false;
+        bool highlight = false;
+        uint8_t flash = 0;
+    };
+
 public:
     BottomBar(
         Adafruit_ST7735& tft,
-        ThemeService& themeService,
-        LayoutService& layoutService,
-        DhtService& dhtService
+        LayoutService& layout,
+        ThemeService& theme
     );
 
-    // 🔹 реактивное обновление
-    void update();
+    // visibility
+    void setVisible(bool v);
+    bool isVisible() const;
 
-    // 🔹 события
-    void markDirty();              // данные / тема изменились
-    void setVisible(bool visible); // экран показал / скрыл BottomBar
+    // buttons API (вызывается экраном)
+    void clearButtons();
+
+    void setButton(Button id, const char* label, bool enabled = true);
+    void setEnabled(Button id, bool enabled);
+    void setHighlight(Button id, bool highlight);
+    void flash(Button id);
+
+    void markDirty();
+
+    // lifecycle
+    void update();
 
 private:
     void clear();
-    void drawContent();
+    void draw();
+    void drawButton(
+        int x, int y, int w, int h,
+        const ButtonState& st
+    );
 
+private:
     Adafruit_ST7735& _tft;
-    ThemeService&    _themeService;
-    LayoutService&  _layout;
-    DhtService&     _dht;
+    LayoutService&   _layout;
+    ThemeService&    _theme;
 
-    bool _visible     = true;
-    bool _wasVisible  = false;
-    bool _dirty       = true;
+    bool _visible = false;
+    bool _dirty   = true;
+
+    ButtonState _buttons[(int)Button::COUNT];
+
+    static constexpr uint8_t FLASH_FRAMES = 6;
 };

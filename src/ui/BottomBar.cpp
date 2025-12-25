@@ -1,134 +1,164 @@
 #include "ui/BottomBar.h"
-#include <math.h>
 
-/*
- * BottomBar.cpp
- * -------------
- * Нижняя статусная строка:
- *  - вторичная информация
- *  - спокойные цвета
- *  - никакого мигания
- */
-
+// ============================================================================
+// ctor
+// ============================================================================
 BottomBar::BottomBar(
     Adafruit_ST7735& tft,
-    ThemeService& themeService,
-    LayoutService& layoutService,
-    DhtService& dhtService
+    LayoutService& layout,
+    ThemeService& theme
 )
 : _tft(tft)
-, _themeService(themeService)
-, _layout(layoutService)
-, _dht(dhtService)
-{}
+, _layout(layout)
+, _theme(theme)
+{
+    clearButtons();
+}
 
-// -----------------------------------------------------
-// markDirty()
-// -----------------------------------------------------
+// ============================================================================
+// visibility
+// ============================================================================
+void BottomBar::setVisible(bool v) {
+    if (_visible == v) return;
+    _visible = v;
+    _dirty = true;
+}
+
+bool BottomBar::isVisible() const {
+    return _visible;
+}
+
+// ============================================================================
+// buttons API
+// ============================================================================
+void BottomBar::clearButtons() {
+    for (int i = 0; i < (int)Button::COUNT; ++i) {
+        _buttons[i] = ButtonState{};
+    }
+    _dirty = true;
+}
+
+void BottomBar::setButton(Button id, const char* label, bool enabled) {
+    auto& b = _buttons[(int)id];
+    b.label = label;
+    b.enabled = enabled;
+    _dirty = true;
+}
+
+void BottomBar::setEnabled(Button id, bool enabled) {
+    auto& b = _buttons[(int)id];
+    if (b.enabled == enabled) return;
+    b.enabled = enabled;
+    _dirty = true;
+}
+
+void BottomBar::setHighlight(Button id, bool highlight) {
+    auto& b = _buttons[(int)id];
+    if (b.highlight == highlight) return;
+    b.highlight = highlight;
+    _dirty = true;
+}
+
+void BottomBar::flash(Button id) {
+    auto& b = _buttons[(int)id];
+    b.flash = FLASH_FRAMES;
+    _dirty = true;
+}
+
 void BottomBar::markDirty() {
     _dirty = true;
 }
 
-// -----------------------------------------------------
-// setVisible()
-// -----------------------------------------------------
-void BottomBar::setVisible(bool visible) {
-    if (_visible != visible) {
-        _visible = visible;
-        _dirty = true;
-        _wasVisible = false; // ← КЛЮЧ
-    }
-}
-
-// -----------------------------------------------------
-// update()
-// -----------------------------------------------------
+// ============================================================================
+// update
+// ============================================================================
 void BottomBar::update() {
 
-    // --- если панель скрыта ---
-    if (!_visible) {
-        if (_wasVisible) {
-            clear();            // очистить один раз
-            _wasVisible = false;
+    bool anyFlash = false;
+    for (auto& b : _buttons) {
+        if (b.flash > 0) {
+            b.flash--;
+            anyFlash = true;
         }
+    }
+
+    if (!_visible) {
+        if (_dirty) clear();
+        _dirty = false;
         return;
     }
 
-    _wasVisible = true;
-
-    if (!_dirty)
-        return;
-
-    clear();
-    drawContent();
-    _dirty = false;
+    if (_dirty || anyFlash) {
+        draw();
+        _dirty = false;
+    }
 }
 
-// -----------------------------------------------------
-// clear()
-// -----------------------------------------------------
+// ============================================================================
+// draw helpers
+// ============================================================================
 void BottomBar::clear() {
-    const Theme& theme = _themeService.current();
-
+    const Theme& th = _theme.current();
     _tft.fillRect(
         0,
-        _layout.bottomY(),
+        _layout.bottomBarY(),
         _tft.width(),
-        _layout.bottomH(),
-        theme.bg
+        _layout.bottomBarH(),
+        th.bg
     );
 }
 
-// -----------------------------------------------------
-// drawContent()
-// -----------------------------------------------------
-void BottomBar::drawContent() {
+void BottomBar::draw() {
+    const Theme& th = _theme.current();
 
-    const Theme& theme = _themeService.current();
+    const int y = _layout.bottomBarY();
+    const int h = _layout.bottomBarH();
+    const int w = _tft.width() / (int)Button::COUNT;
 
-    const int y = _layout.bottomY();
-    const int h = _layout.bottomH();
+    _tft.fillRect(0, y, _tft.width(), h, th.bg);
 
-    _tft.setFont(nullptr);
-    _tft.setTextWrap(false);
-    _tft.setTextSize(1);
+    for (int i = 0; i < (int)Button::COUNT; ++i) {
+        drawButton(
+            i * w,
+            y,
+            w,
+            h,
+            _buttons[i]
+        );
+    }
+}
 
-    // высота стандартного шрифта при size=1 ≈ 8px
-    const int TEXT_H = 8;
-    const int textY = y + (h - TEXT_H) / 2;
+void BottomBar::drawButton(
+    int x, int y, int w, int h,
+    const ButtonState& st
+) {
+    if (!st.label) return;
 
-    // -------------------------------------------------
-    // если данных нет
-    // -------------------------------------------------
-    if (!_dht.isValid()) {
-        _tft.setTextColor(theme.muted, theme.bg);
-        _tft.setCursor(6, textY);
-        _tft.print("DHT: --°C");
+    const Theme& th = _theme.current();
 
-        _tft.setCursor(_tft.width() - 6 - 24, textY);
-        _tft.print("--%");
-        return;
+    uint16_t fg = th.textPrimary;
+    uint16_t bg = th.bg;
+
+    if (!st.enabled) {
+        fg = th.muted;
+    }
+    if (st.highlight) {
+        fg = th.accent;
+    }
+    if (st.flash > 0) {
+        fg = th.bg;
+        bg = th.accent;
     }
 
-    // -------------------------------------------------
-    // данные есть
-    // -------------------------------------------------
-    int temp = (int)round(_dht.temperature());
-    int hum  = (int)round(_dht.humidity());
+    _tft.fillRect(x, y, w, h, bg);
 
-    _tft.setTextColor(theme.muted, theme.bg);
+    _tft.setTextSize(1);
+    _tft.setTextColor(fg, bg);
+    _tft.setTextWrap(false);
 
-    // --- температура (слева) ---
-    _tft.setCursor(6, textY);
-    _tft.printf("%d°C", temp);
+    const int tx = x + (w - strlen(st.label) * 6) / 2;
+    const int ty = y + (h - 8) / 2;
 
-    // --- влажность (справа) ---
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%d%%", hum);
-
-    // ширина строки влажности: ~6px * символ
-    int humW = strlen(buf) * 6;
-
-    _tft.setCursor(_tft.width() - 6 - humW, textY);
-    _tft.print(buf);
+    _tft.setCursor(tx, ty);
+    _tft.print(st.label);
 }

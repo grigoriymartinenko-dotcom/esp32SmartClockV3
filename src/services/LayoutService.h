@@ -4,11 +4,12 @@
 /*
  * LayoutService
  * -------------
- * ЕДИНСТВЕННЫЙ источник координат UI.
+ * ЕДИНСТВЕННЫЙ источник геометрии UI.
  *
- * ЭТАП 1:
- *  - Введён новый контракт ButtonBar
- *  - Старый API сохранён как alias
+ * Зоны:
+ *  - StatusBar (верх)
+ *  - Content   (центр)
+ *  - BottomBar (низ)
  */
 class LayoutService {
 public:
@@ -18,43 +19,51 @@ public:
 
     // ===== FLAGS =====
     void setHasStatusBar(bool v);
-    void setHasButtonBar(bool v);
-
-    // legacy alias
-    void setHasBottomBar(bool v) { setHasButtonBar(v); }
+    void setHasBottomBar(bool v);
 
     bool hasStatusBar() const;
-    bool hasButtonBar() const;
+    bool hasBottomBar() const;
 
-    // ===== NEW HEIGHTS =====
+    // ===== HEIGHTS =====
     int statusBarH() const;
-    int buttonBarH() const;
+    int bottomBarH() const;
     int contentH() const;
 
-    // ===== NEW Y =====
+    // ===== Y POSITIONS =====
     int statusBarY() const;
     int contentY() const;
-    int buttonBarY() const;
+    int bottomBarY() const;
 
-    // ===== LEGACY API (ALIAS) =====
-    int statusH() const { return statusBarH(); }
-    int statusY() const { return statusBarY(); }
+    // ===== LEGACY ALIAS (ВРЕМЕННО) =====
 
-    int bottomH() const { return buttonBarH(); }
-    int bottomY() const { return buttonBarY(); }
+// status
+int statusY() const { return statusBarY(); }
+int statusH() const { return statusBarH(); }
 
-    int clockY() const { return contentY(); }
+// bottom / button
+int buttonBarY() const { return bottomBarY(); }
+int buttonBarH() const { return bottomBarH(); }
 
-    // safe-zone для старых экранов
-    int clockSafeY() const { return contentY(); }
-    int clockSafeH() const { return contentH(); }
+// very old names
+int bottomY() const { return bottomBarY(); }
+int bottomH() const { return bottomBarH(); }
+
+// clock safe (legacy screens)
+int clockSafeY() const { return contentY(); }
+int clockSafeH() const { return contentH(); }
+
+// flags
+void setHasButtonBar(bool v) { setHasBottomBar(v); }
+
+// ===== VERY OLD legacy (Forecast, etc.) =====
+int clockY() const { return contentY(); }
 
 private:
     Adafruit_ST7735& _tft;
 
     bool _hasStatusBar = false;
-    bool _hasButtonBar = false;
+    bool _hasBottomBar = false;
 
     static constexpr int STATUS_BAR_HEIGHT = 24;
-    static constexpr int BUTTON_BAR_HEIGHT = 22;
+    static constexpr int BOTTOM_BAR_HEIGHT = 26; // единый стандарт
 };

@@ -7,6 +7,8 @@
 #include "services/ThemeService.h"
 #include "services/LayoutService.h"
 #include "services/UiVersionService.h"
+#include "services/DhtService.h"
+
 class ClockScreen : public Screen {
 public:
     ClockScreen(
@@ -15,7 +17,8 @@ public:
         NightService& nightService,
         ThemeService& themeService,
         LayoutService& layoutService,
-        UiVersionService& uiVersion
+        UiVersionService& uiVersion,
+        DhtService& dhtService
     );
 
     void begin() override;
@@ -26,17 +29,23 @@ public:
 
 private:
     void drawTime(bool force);
-    
+    void drawDht(bool force);
+
+private:
     Adafruit_ST7735& tft;
     TimeService&     time;
     NightService&    night;
     LayoutService&   layout;
     UiVersionService& uiVersion;
+    DhtService&      dht;
 
     uint32_t lastTimeV   = 0;
     uint32_t lastThemeV  = 0;
     uint32_t lastScreenV = 0;
-
+    uint32_t lastDhtV    = 0;
+    uint32_t lastSensorV    = 0;
+    
+bool dhtDrawnOnce = false;
     uint8_t  fadeStep   = 0;
     bool     fadeActive = false;
 };

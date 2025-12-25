@@ -19,7 +19,6 @@ public:
         Screen& initial,
         StatusBar& statusBar,
         BottomBar& bottomBar,
-        ButtonBar& buttonBar,          // ← ОБЯЗАТЕЛЬНО
         LayoutService& layout,
         UiSeparator& sepStatus,
         UiSeparator& sepBottom,

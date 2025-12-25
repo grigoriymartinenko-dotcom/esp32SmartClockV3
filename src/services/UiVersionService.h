@@ -21,6 +21,7 @@ enum class UiChannel : uint8_t {
     TIME,
     THEME,
     SCREEN,
+    DHT,        // 👈 ДОБАВИТЬ
     COUNT
 };
 

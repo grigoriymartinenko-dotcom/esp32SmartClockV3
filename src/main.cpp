@@ -121,9 +121,8 @@ StatusBar statusBar(
 
 BottomBar bottomBar(
     tft,
-    themeService,
     layout,
-    dht
+    themeService
 );
 ButtonBar buttonBar(
     tft,
@@ -153,9 +152,9 @@ ClockScreen clockScreen(
     nightService,
     themeService,
     layout,
-    uiVersion
+    uiVersion,
+    dht
 );
-
 ForecastScreen forecastScreen(
     tft,
     themeService,
@@ -181,7 +180,6 @@ ScreenManager screenManager(
     clockScreen,
     statusBar,
     bottomBar,
-    buttonBar,        // ← ОБЯЗАТЕЛЬНО
     layout,
     sepStatus,
     sepBottom,
