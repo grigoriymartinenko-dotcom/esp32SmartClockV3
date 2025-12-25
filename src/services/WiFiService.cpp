@@ -1,5 +1,8 @@
 #include "services/WifiService.h"
 
+#include <Arduino.h>
+#include <cstring>
+
 /*
  * WifiService.cpp
  * ----------------
@@ -11,6 +14,20 @@
  *
  * ИНВАРИАНТ:
  *  Wi-Fi OFF ⇒ НИКАКИХ scan / connect
+ *
+ * ВАЖНО ДЛЯ UI:
+ *  - UI хочет пометить сеть в списке как [Connected]
+ *  - Для этого ему нужен SSID текущего соединения
+ *
+ * РЕШЕНИЕ:
+ *  - currentSsid() возвращает SSID из PreferencesService,
+ *    который мы:
+ *      1) записываем как "intent" при connect(ssid, pass)
+ *      2) подтверждаем фактическим SSID при WL_CONNECTED (WiFi.SSID())
+ *
+ * Таким образом:
+ *  - пометка [Connected] появляется ТОЛЬКО когда state ONLINE
+ *  - SSID всегда валиден и одинаков для UI и сервиса
  */
 
 // ============================================================================
@@ -41,7 +58,7 @@ void WifiService::begin() {
 void WifiService::update() {
 
     // ------------------------------------------------------------------------
-    // 🔥 FIX: Wi-Fi OFF → НИЧЕГО не делаем, включая scan
+    // Wi-Fi OFF → НИЧЕГО не делаем, включая scan
     // ------------------------------------------------------------------------
     if (!_enabled)
         return;
@@ -54,6 +71,19 @@ void WifiService::update() {
     if (st == WL_CONNECTED) {
         if (_state != State::ONLINE) {
             _state = State::ONLINE;
+
+            // ✅ КРИТИЧНО:
+            // Зафиксировать актуальный SSID в Preferences, чтобы UI мог
+            // пометить [Connected] рядом с SSID из scan-листа.
+            //
+            // WiFi.SSID() — источник правды "к чему реально подключились".
+            String cur = WiFi.SSID();
+            if (cur.length() > 0) {
+                const char* pass = _prefs.wifiPass(); // мог быть записан раньше при connect(ssid, pass)
+                _prefs.setWifiCredentials(cur.c_str(), pass ? pass : "");
+                _prefs.save();
+            }
+
             _ui.bump(UiChannel::WIFI);
         }
         return;
@@ -119,7 +149,7 @@ void WifiService::setEnabled(bool on) {
     } else {
 
         // --------------------------------------------------------------------
-        // 🔥 FIX: ПРИНУДИТЕЛЬНО останавливаем scan при OFF
+        // OFF → принудительно останавливаем scan
         // --------------------------------------------------------------------
         if (_scanInProgress) {
             WiFi.scanDelete();
@@ -145,8 +175,31 @@ WifiService::State WifiService::state() const {
 // START / STOP
 // ============================================================================
 void WifiService::start() {
+
     WiFi.mode(WIFI_STA);
 
+    // Если в prefs есть креды — подключаемся явно (предсказуемо для UI)
+    if (_prefs.hasWifiCredentials() && _prefs.wifiSsid()[0]) {
+
+        WiFi.setAutoConnect(false);
+        WiFi.setAutoReconnect(false);
+
+        const char* ssid = _prefs.wifiSsid();
+        const char* pass = _prefs.wifiPass();
+
+        if (pass && pass[0]) {
+            WiFi.begin(ssid, pass);
+        } else {
+            WiFi.begin(ssid);
+        }
+
+        _connectStartMs = millis();
+        _state = State::CONNECTING;
+        _ui.bump(UiChannel::WIFI);
+        return;
+    }
+
+    // Иначе — как было: begin() без аргументов (если стек WiFi помнит сеть)
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
 
@@ -176,9 +229,20 @@ void WifiService::connect(const char* ssid) {
     if (!ssid || !ssid[0])
         return;
 
-    Serial.printf("[WiFi] connect to '%s'\n", ssid);
+    Serial.printf("[WiFi] connect to '%s' (open or saved pass)\n", ssid);
 
-    // гарантируем чистое подключение
+    // Если пароль для этого SSID уже сохранён — используем его
+    const char* pass = nullptr;
+    if (_prefs.hasWifiCredentials() && strcmp(_prefs.wifiSsid(), ssid) == 0) {
+        pass = _prefs.wifiPass();
+    }
+
+    if (pass && pass[0]) {
+        connect(ssid, pass);
+        return;
+    }
+
+    // Open network / no password
     WiFi.disconnect(true);
     WiFi.mode(WIFI_STA);
 
@@ -186,6 +250,34 @@ void WifiService::connect(const char* ssid) {
     WiFi.setAutoReconnect(false);
 
     WiFi.begin(ssid);
+
+    // ✅ Для UI: сохраняем intent (SSID), но пометка появится только когда ONLINE
+    _prefs.setWifiCredentials(ssid, "");
+    _prefs.save();
+
+    _connectStartMs = millis();
+    _state = State::CONNECTING;
+    _ui.bump(UiChannel::WIFI);
+}
+
+void WifiService::connect(const char* ssid, const char* pass) {
+
+    if (!_enabled || !ssid || !ssid[0])
+        return;
+
+    Serial.printf("[WiFi] connect to '%s' with password\n", ssid);
+
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_STA);
+
+    WiFi.setAutoConnect(false);
+    WiFi.setAutoReconnect(false);
+
+    WiFi.begin(ssid, pass);
+
+    // ✅ Для UI: сохраняем intent (SSID/PASS), но пометка появится только когда ONLINE
+    _prefs.setWifiCredentials(ssid, pass ? pass : "");
+    _prefs.save();
 
     _connectStartMs = millis();
     _state = State::CONNECTING;
@@ -197,9 +289,7 @@ void WifiService::connect(const char* ssid) {
 // ============================================================================
 void WifiService::startScan() {
 
-    // ------------------------------------------------------------------------
-    // 🔥 FIX: НЕЛЬЗЯ сканировать, если Wi-Fi выключен
-    // ------------------------------------------------------------------------
+    // НЕЛЬЗЯ сканировать, если Wi-Fi выключен
     if (!_enabled)
         return;
 
@@ -245,22 +335,17 @@ const char* WifiService::ssidAt(int i) const {
         return "";
     return _ssids[i].c_str();
 }
-void WifiService::connect(const char* ssid, const char* pass) {
 
-    if (!_enabled || !ssid || !ssid[0])
-        return;
+// ============================================================================
+// STATUS (for UI)
+// ============================================================================
+const char* WifiService::currentSsid() const {
+    if (_state != State::ONLINE)
+        return nullptr;
 
-    Serial.printf("[WiFi] connect to '%s' with password\n", ssid);
+    const char* s = _prefs.wifiSsid();
+    if (!s || !s[0])
+        return nullptr;
 
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_STA);
-
-    WiFi.setAutoConnect(false);
-    WiFi.setAutoReconnect(false);
-
-    WiFi.begin(ssid, pass);
-
-    _connectStartMs = millis();
-    _state = State::CONNECTING;
-    _ui.bump(UiChannel::WIFI);
+    return s;
 }

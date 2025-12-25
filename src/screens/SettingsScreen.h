@@ -40,8 +40,8 @@ public:
     void update() override;
 
     bool hasStatusBar() const override { return false; }
-    bool hasBottomBar() const override { return true; }
-
+bool hasBottomBar() const override { return false; }
+bool hasButtonBar() const override { return true; }
     void onThemeChanged() override;
 
     // ===== Buttons =====

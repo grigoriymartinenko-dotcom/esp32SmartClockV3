@@ -36,6 +36,7 @@ void BottomBar::setVisible(bool visible) {
     if (_visible != visible) {
         _visible = visible;
         _dirty = true;
+        _wasVisible = false; // ← КЛЮЧ
     }
 }
 

@@ -6,6 +6,7 @@
 #include "services/LayoutService.h"
 #include "services/UiVersionService.h"
 #include "services/WifiService.h"
+#include "services/PreferencesService.h"
 #include "ui/ButtonBar.h"
 
 /*
@@ -13,15 +14,13 @@
  * --------------
  * Экран списка Wi-Fi сетей.
  *
- * Показывает:
- *  - Scanning…
- *  - Empty list
- *  - List SSID
+ * UX:
+ *  - Подключённая сеть помечается [Connected]
+ *  - Нижнего текста "Connected" НЕТ
  *
- * ВАЖНО:
- *  - Экран НЕ обрабатывает кнопки
- *  - Навигация будет подключена позже
- *  - Перерисовка только по версиям
+ * OK:
+ *  - на подключённой сети → Disconnect (Wi-Fi OFF)
+ *  - на другой сети        → Connect
  */
 
 class WifiListScreen : public Screen {
@@ -31,7 +30,8 @@ public:
         ThemeService& theme,
         LayoutService& layout,
         UiVersionService& ui,
-        WifiService& wifi
+        WifiService& wifi,
+        PreferencesService& prefs
     );
 
     // Screen
@@ -39,7 +39,12 @@ public:
     void update() override;
 
     bool hasStatusBar() const override { return false; }
-    bool hasBottomBar() const override { return true; }
+    bool hasBottomBar() const override { return false; }
+bool hasButtonBar() const override { return true; }
+
+    // Buttons
+    void onShortOk();
+    void onShortBack();
 
 private:
     enum class State {
@@ -55,19 +60,22 @@ private:
     void drawList();
     void drawSeparator(int y);
 
-    int visibleRows() const;
+    int  visibleRows() const;
+    bool isConnectedSsid(const char* ssid) const;
 
 private:
-    Adafruit_ST7735&   _tft;
-    LayoutService&    _layout;
-    UiVersionService& _ui;
-    WifiService&      _wifi;
+    Adafruit_ST7735&    _tft;
+    LayoutService&     _layout;
+    UiVersionService&  _ui;
+    WifiService&       _wifi;
+    PreferencesService&_prefs;
 
     ButtonBar _buttons;
 
     State _state = State::SCANNING;
 
     int _scroll   = 0;
+    int _selected = 0;
     int _netCount = 0;
 
     uint32_t _lastScreenVer = 0;

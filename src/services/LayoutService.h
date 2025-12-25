@@ -6,10 +6,9 @@
  * -------------
  * ЕДИНСТВЕННЫЙ источник координат UI.
  *
- * ПРИНЦИП:
- *  - LayoutService оперирует ЛОГИЧЕСКИМИ зонами
- *  - Толщина линий = ответственность UiSeparator
- *  - НИКАКИХ offset / магических +1 / -1
+ * ЭТАП 1:
+ *  - Введён новый контракт ButtonBar
+ *  - Старый API сохранён как alias
  */
 class LayoutService {
 public:
@@ -18,42 +17,44 @@ public:
     void begin();
 
     // ===== FLAGS =====
-    void setHasBottomBar(bool v);
-    bool hasBottomBar() const;
+    void setHasStatusBar(bool v);
+    void setHasButtonBar(bool v);
 
-    // ===== HEIGHTS =====
-    int statusH() const;
-    int clockH()  const;
-    int bottomH() const;
+    // legacy alias
+    void setHasBottomBar(bool v) { setHasButtonBar(v); }
 
-    // ===== Y POSITIONS =====
-    int statusY() const;
-    int clockY()  const;
-    int bottomY() const;
+    bool hasStatusBar() const;
+    bool hasButtonBar() const;
 
-    // ===== BUTTON BAR (Settings / internal) =====
+    // ===== NEW HEIGHTS =====
+    int statusBarH() const;
     int buttonBarH() const;
+    int contentH() const;
+
+    // ===== NEW Y =====
+    int statusBarY() const;
+    int contentY() const;
     int buttonBarY() const;
 
-    // ===== SEPARATORS (ЛОГИЧЕСКАЯ ПОЗИЦИЯ) =====
-    int sepStatusY() const;   // линия СРАЗУ под StatusBar
-    int sepBottomY() const;   // линия СРАЗУ над BottomBar
+    // ===== LEGACY API (ALIAS) =====
+    int statusH() const { return statusBarH(); }
+    int statusY() const { return statusBarY(); }
 
-    // ===== SAFE CLOCK RECT =====
-    int clockSafeY() const;
-    int clockSafeH() const;
+    int bottomH() const { return buttonBarH(); }
+    int bottomY() const { return buttonBarY(); }
+
+    int clockY() const { return contentY(); }
+
+    // safe-zone для старых экранов
+    int clockSafeY() const { return contentY(); }
+    int clockSafeH() const { return contentH(); }
 
 private:
     Adafruit_ST7735& _tft;
 
-    static constexpr int STATUS_H = 24;
-    static constexpr int SEPARATOR_SAFE = 2; 
-    // BottomBar (датчики) — как было
-    static constexpr int BOTTOM_H = 36;
+    bool _hasStatusBar = false;
+    bool _hasButtonBar = false;
 
-    // ButtonBar (кнопки) — ниже на ~5мм (меньше высота => визуально "ниже")
-    // 5мм ≈ 18–20px → берём 20px.
-    static constexpr int BUTTONBAR_H = 20;
-
-    bool _hasBottomBar = true;
+    static constexpr int STATUS_BAR_HEIGHT = 24;
+    static constexpr int BUTTON_BAR_HEIGHT = 22;
 };

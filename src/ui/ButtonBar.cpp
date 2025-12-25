@@ -1,4 +1,16 @@
 #include "ui/ButtonBar.h"
+#include <Adafruit_GFX.h>
+
+/*
+ * ButtonBar
+ * ---------
+ * Визуальная панель кнопок.
+ *
+ * Правила:
+ *  - геометрию берёт ТОЛЬКО из LayoutService
+ *  - цвета — ТОЛЬКО через ThemeService::current()
+ *  - корректная работа с default font и GFXfont (baseline-safe)
+ */
 
 ButtonBar::ButtonBar(
     Adafruit_ST7735& tft,
@@ -11,6 +23,14 @@ ButtonBar::ButtonBar(
 {
 }
 
+// ============================================================================
+// Public API
+// ============================================================================
+
+void ButtonBar::markDirty() {
+    _dirty = true;
+}
+
 void ButtonBar::setVisible(bool visible) {
     if (_visible == visible) return;
     _visible = visible;
@@ -18,134 +38,129 @@ void ButtonBar::setVisible(bool visible) {
 }
 
 void ButtonBar::setActions(bool left, bool ok, bool right, bool back) {
-    if (_hasLeft == left && _hasOk == ok && _hasRight == right && _hasBack == back)
-        return;
-
-    _hasLeft = left;
-    _hasOk = ok;
+    _hasLeft  = left;
+    _hasOk    = ok;
     _hasRight = right;
-    _hasBack = back;
+    _hasBack  = back;
     _dirty = true;
 }
 
 void ButtonBar::setHighlight(bool left, bool ok, bool right, bool back) {
-    if (_hiLeft == left && _hiOk == ok && _hiRight == right && _hiBack == back)
-        return;
-
-    _hiLeft = left;
-    _hiOk = ok;
+    _hiLeft  = left;
+    _hiOk    = ok;
     _hiRight = right;
-    _hiBack = back;
+    _hiBack  = back;
     _dirty = true;
 }
 
-// =====================================================
-// FLASH — только если не активен
-// =====================================================
 void ButtonBar::flash(ButtonId id) {
     switch (id) {
-        case ButtonId::LEFT:
-            if (_flashLeft == 0) _flashLeft = FLASH_FRAMES;
-            break;
-        case ButtonId::OK:
-            if (_flashOk == 0) _flashOk = FLASH_FRAMES;
-            break;
-        case ButtonId::RIGHT:
-            if (_flashRight == 0) _flashRight = FLASH_FRAMES;
-            break;
-        case ButtonId::BACK:
-            if (_flashBack == 0) _flashBack = FLASH_FRAMES;
-            break;
+        case ButtonId::LEFT:  _flashLeft  = FLASH_FRAMES; break;
+        case ButtonId::OK:    _flashOk    = FLASH_FRAMES; break;
+        case ButtonId::RIGHT: _flashRight = FLASH_FRAMES; break;
+        case ButtonId::BACK:  _flashBack  = FLASH_FRAMES; break;
     }
     _dirty = true;
 }
 
 bool ButtonBar::anyFlashActive() const {
-    return (_flashLeft > 0) || (_flashOk > 0) || (_flashRight > 0) || (_flashBack > 0);
-}
-
-void ButtonBar::markDirty() {
-    _dirty = true;
+    return _flashLeft || _flashOk || _flashRight || _flashBack;
 }
 
 void ButtonBar::update() {
-    if (!_visible) {
-        if (_wasVisible) {
-            clear();
-            _wasVisible = false;
+    if (!_visible && !_wasVisible) return;
+
+    if (_dirty || anyFlashActive() || _visible != _wasVisible) {
+        clear();
+        if (_visible) {
+            draw();
         }
-        return;
-    }
-
-    if (anyFlashActive()) {
-        _dirty = true;
-    }
-
-    if (_dirty || !_wasVisible) {
-        draw();
         _dirty = false;
-        _wasVisible = true;
-
-        if (_flashLeft  > 0) _flashLeft--;
-        if (_flashOk    > 0) _flashOk--;
-        if (_flashRight > 0) _flashRight--;
-        if (_flashBack  > 0) _flashBack--;
+        _wasVisible = _visible;
     }
+
+    // уменьшение flash-счётчиков
+    if (_flashLeft)  --_flashLeft;
+    if (_flashOk)    --_flashOk;
+    if (_flashRight) --_flashRight;
+    if (_flashBack)  --_flashBack;
 }
 
+// ============================================================================
+// Drawing
+// ============================================================================
+
 void ButtonBar::clear() {
+    const Theme& th = _themeService.current();
+
     const int y = _layout.buttonBarY();
     const int h = _layout.buttonBarH();
-    _tft.fillRect(0, y, _tft.width(), h, _themeService.current().bg);
+
+    _tft.fillRect(
+        0,
+        y,
+        _tft.width(),
+        h,
+        th.bg
+    );
 }
 
 void ButtonBar::draw() {
-    const Theme& th = _themeService.current();
-
     const int y = _layout.buttonBarY();
     const int h = _layout.buttonBarH();
-
-    _tft.fillRect(0, y, _tft.width(), h, th.bg);
-
     const int w = _tft.width();
+
     const int cellW = w / 4;
 
-    drawCell(0 * cellW, y, cellW, h, "<-",   _hasLeft,  _hiLeft,  _flashLeft  > 0);
-    drawCell(1 * cellW, y, cellW, h, "OK",   _hasOk,    _hiOk,    _flashOk    > 0);
-    drawCell(2 * cellW, y, cellW, h, "->",   _hasRight, _hiRight, _flashRight > 0);
-    drawCell(3 * cellW, y, w - 3 * cellW, h, "BACK", _hasBack, _hiBack, _flashBack > 0);
+    drawCell(0 * cellW, y, cellW, h, "LEFT",
+             _hasLeft, _hiLeft, _flashLeft);
+
+    drawCell(1 * cellW, y, cellW, h, "OK",
+             _hasOk, _hiOk, _flashOk);
+
+    drawCell(2 * cellW, y, cellW, h, "RIGHT",
+             _hasRight, _hiRight, _flashRight);
+
+    drawCell(3 * cellW, y, cellW, h, "BACK",
+             _hasBack, _hiBack, _flashBack);
 }
 
-void ButtonBar::drawCell(int x, int y, int w, int h,
-                         const char* label,
-                         bool enabled,
-                         bool highlight,
-                         bool flash) {
-
+void ButtonBar::drawCell(
+    int x, int y, int w, int h,
+    const char* label,
+    bool enabled,
+    bool highlight,
+    bool flash
+) {
     const Theme& th = _themeService.current();
 
-    _tft.fillRect(x, y, w, h, th.bg);
+    uint16_t bg = th.bg;
+    uint16_t fg = th.textSecondary;
 
-    uint16_t color;
-    if (!enabled)          color = th.muted;
-    else if (flash)        color = th.accent;        // 🔥 событие
-    else if (highlight)    color = th.textSecondary; // ← спокойная подсветка
-    else                   color = th.textPrimary;
+    if (!enabled) {
+        fg = th.textSecondary;
+    } else if (flash) {
+        bg = th.accent;
+        fg = th.bg;
+    } else if (highlight) {
+        fg = th.textPrimary;
+    }
 
-    _tft.setFont(nullptr);
-    _tft.setTextWrap(false);
-    _tft.setTextSize(1);
-    _tft.setTextColor(color, th.bg);
+    // фон ячейки
+    _tft.fillRect(x, y, w, h, bg);
 
-    int len = 0;
-    for (const char* p = label; *p; ++p) len++;
+    if (!label || !*label) return;
 
-    const int textW = len * 6;
-    const int textH = 8;
+    // ===== baseline-safe центрирование текста =====
+    int16_t x1, y1;
+    uint16_t tw, thh;
 
-    const int cx = x + (w - textW) / 2;
-    const int cy = y + (h - textH) / 2;
+    _tft.getTextBounds(label, 0, 0, &x1, &y1, &tw, &thh);
 
-    _tft.setCursor(cx, cy);
+    const int textX = x + (w - (int)tw) / 2;
+    const int baselineY = y + (h / 2) + (thh / 2) - y1;
+
+    _tft.setCursor(textX, baselineY);
+    _tft.setTextColor(fg);
     _tft.print(label);
 }

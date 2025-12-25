@@ -5,6 +5,7 @@
 #include "core/Screen.h"
 #include "ui/StatusBar.h"
 #include "ui/BottomBar.h"
+#include "ui/ButtonBar.h"
 #include "ui/UiSeparator.h"
 #include "ui/UiDebugOverlay.h"
 #include "services/LayoutService.h"
@@ -18,11 +19,12 @@ public:
         Screen& initial,
         StatusBar& statusBar,
         BottomBar& bottomBar,
+        ButtonBar& buttonBar,          // ← ОБЯЗАТЕЛЬНО
         LayoutService& layout,
         UiSeparator& sepStatus,
         UiSeparator& sepBottom,
         UiVersionService& uiVersion,
-        ThemeService& themeService        // 🔹 ДОБАВИЛИ
+        ThemeService& themeService
     );
 
     void begin();
@@ -41,17 +43,16 @@ private:
     Screen*           _current = nullptr;
     Screen*           _prev    = nullptr;
 
-
-    // ===== UiVersion cache (for dirty detection) =====
-uint32_t _lastTimeVer   = 0;
-uint32_t _lastThemeVer  = 0;
-uint32_t _lastScreenVer = 0;
+    uint32_t _lastTimeVer   = 0;
+    uint32_t _lastThemeVer  = 0;
+    uint32_t _lastScreenVer = 0;
 
     StatusBar*        _statusBar;
     BottomBar*        _bottomBar;
+    ButtonBar*        _buttonBar;      // ← ОБЯЗАТЕЛЬНО
     LayoutService*    _layout;
     UiSeparator*      _sepStatus;
     UiSeparator*      _sepBottom;
     UiVersionService* _uiVersion;
-    ThemeService*     _theme;   // 🔹 ХРАНИМ
+    ThemeService*     _theme;
 };

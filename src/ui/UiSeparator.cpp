@@ -1,27 +1,30 @@
 #include "ui/UiSeparator.h"
 
-/*
- * UiSeparator
- * -----------
- * ФИЗИЧЕСКАЯ отрисовка линии.
- * Толщина линии = 2px (ST7735 safe).
- */
-
 UiSeparator::UiSeparator(
     Adafruit_ST7735& tft,
-    ThemeService& theme,
-    int y
+    ThemeService& themeService,
+    LayoutService& layoutService
 )
-: _tft(tft)
-, _theme(theme)
-, _y(y)
-{}
+    : _tft(tft)
+    , _theme(themeService)
+    , _layout(layoutService)
+{
+}
 
 void UiSeparator::setY(int y) {
-    if (_y != y) {
-        _y = y;
-        markDirty();
-    }
+    if (_y == y)
+        return;
+
+    _y = y;
+    _dirty = true;
+}
+
+void UiSeparator::setVisible(bool visible) {
+    if (_visible == visible)
+        return;
+
+    _visible = visible;
+    _dirty = true;
 }
 
 void UiSeparator::markDirty() {
@@ -29,30 +32,54 @@ void UiSeparator::markDirty() {
 }
 
 void UiSeparator::update() {
-    if (!_dirty) return;
-    _dirty = false;
+
+    // --- если скрыт ---
+    if (!_visible) {
+        if (_wasVisible) {
+            clear();
+            _wasVisible = false;
+        }
+        return;
+    }
+
+    // --- если Y невалиден ---
+    if (_y < 0) {
+        if (_wasVisible) {
+            clear();
+            _wasVisible = false;
+        }
+        return;
+    }
+
+    if (!_dirty && _wasVisible)
+        return;
+
     draw();
+    _dirty = false;
+    _wasVisible = true;
 }
 
 void UiSeparator::draw() {
-
-    if (_y < 0) return;
-
     const Theme& th = _theme.current();
 
-    // 1px фон + 1px линия (ST7735 FIX)
+    // толщина линии = 1px
+    _tft.drawFastHLine(
+        0,
+        _y,
+        _tft.width(),
+        th.muted
+    );
+}
+
+void UiSeparator::clear() {
+    const Theme& th = _theme.current();
+
+    // очищаем область толщиной 2px на всякий случай
     _tft.fillRect(
         0,
         _y,
         _tft.width(),
         2,
         th.bg
-    );
-
-    _tft.drawFastHLine(
-        0,
-        _y + 1,
-        _tft.width(),
-        th.accent
     );
 }

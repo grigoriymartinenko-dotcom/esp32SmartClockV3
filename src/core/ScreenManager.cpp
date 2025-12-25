@@ -1,82 +1,92 @@
 #include "core/ScreenManager.h"
 
+// ============================================================================
+// ctor
+// ============================================================================
 ScreenManager::ScreenManager(
     Adafruit_ST7735& tft,
     Screen& initial,
     StatusBar& statusBar,
     BottomBar& bottomBar,
+    ButtonBar& buttonBar,
     LayoutService& layout,
     UiSeparator& sepStatus,
     UiSeparator& sepBottom,
     UiVersionService& uiVersion,
     ThemeService& themeService
 )
-: _tft(&tft)
-, _current(&initial)
-, _statusBar(&statusBar)
-, _bottomBar(&bottomBar)
-, _layout(&layout)
-, _sepStatus(&sepStatus)
-, _sepBottom(&sepBottom)
-, _uiVersion(&uiVersion)
-, _theme(&themeService)
-, _lastTimeVer(0)
-, _lastThemeVer(0)
-, _lastScreenVer(0)
-{}
+    : _tft(&tft)
+    , _current(&initial)
+    , _prev(nullptr)
+    , _statusBar(&statusBar)
+    , _bottomBar(&bottomBar)   // legacy, но выключен
+    , _buttonBar(&buttonBar)
+    , _layout(&layout)
+    , _sepStatus(&sepStatus)
+    , _sepBottom(&sepBottom)
+    , _uiVersion(&uiVersion)
+    , _theme(&themeService)
+{
+}
 
-// ------------------------------------------------------------
+// ============================================================================
+// helpers
+// ============================================================================
 void ScreenManager::clearStatusArea() {
     if (!_tft || !_layout || !_theme) return;
 
     const Theme& th = _theme->current();
+    int h = _layout->statusY() + _layout->statusH() + 2;
 
-    const int h = _layout->statusY() + _layout->statusH() + 2;
-
-    _tft->fillRect(
-        0,
-        0,
-        _tft->width(),
-        h,
-        th.bg
-    );
+    _tft->fillRect(0, 0, _tft->width(), h, th.bg);
 }
 
 void ScreenManager::applyLayout() {
 
+    // ===== Status separator =====
     if (_current && _current->hasStatusBar()) {
-        _sepStatus->setY(_layout->sepStatusY());
+        _sepStatus->setY(_layout->statusY() + _layout->statusH());
     } else {
         _sepStatus->setY(-1);
     }
     _sepStatus->markDirty();
 
-    if (_current && _current->hasBottomBar()) {
-        _sepBottom->setY(_layout->sepBottomY());
+    // ===== ButtonBar separator =====
+    if (_current && _current->hasButtonBar()) {
+        _sepBottom->setY(_layout->buttonBarY());
     } else {
         _sepBottom->setY(-1);
     }
     _sepBottom->markDirty();
 }
 
+// ============================================================================
+// lifecycle
+// ============================================================================
 void ScreenManager::begin() {
     if (!_current) return;
 
-    _layout->setHasBottomBar(_current->hasBottomBar());
-    applyLayout();
+    // Layout — только StatusBar + ButtonBar
+    _layout->setHasStatusBar(_current->hasStatusBar());
+    _layout->setHasButtonBar(_current->hasButtonBar());
 
+    applyLayout();
     _current->begin();
 
+    // StatusBar
     if (_current->hasStatusBar()) {
         _statusBar->markDirty();
     } else {
         clearStatusArea();
     }
 
-    _bottomBar->setVisible(_current->hasBottomBar());
-    _bottomBar->markDirty();
+    // ❌ BottomBar ВЫКЛЮЧЕН ВСЕГДА
+    _bottomBar->setVisible(false);
 
-    // sync versions at start
+    // ButtonBar — единый и стабильный
+    _buttonBar->setVisible(_current->hasButtonBar());
+    _buttonBar->markDirty();
+
     _lastTimeVer   = _uiVersion->version(UiChannel::TIME);
     _lastThemeVer  = _uiVersion->version(UiChannel::THEME);
     _lastScreenVer = _uiVersion->version(UiChannel::SCREEN);
@@ -87,13 +97,10 @@ void ScreenManager::set(Screen& screen) {
     _prev = _current;
     _current = &screen;
 
-    if (_prev && !_prev->hasStatusBar() && _current->hasStatusBar()) {
-        _uiVersion->bump(UiChannel::SCREEN);
-    }
+    _layout->setHasStatusBar(_current->hasStatusBar());
+    _layout->setHasButtonBar(_current->hasButtonBar());
 
-    _layout->setHasBottomBar(_current->hasBottomBar());
     applyLayout();
-
     _current->begin();
 
     if (_current->hasStatusBar()) {
@@ -102,20 +109,24 @@ void ScreenManager::set(Screen& screen) {
         clearStatusArea();
     }
 
-    _bottomBar->setVisible(_current->hasBottomBar());
-    _bottomBar->markDirty();
+    _bottomBar->setVisible(false);
+
+    _buttonBar->setVisible(_current->hasButtonBar());
+    _buttonBar->markDirty();
 
     _lastScreenVer = _uiVersion->version(UiChannel::SCREEN);
 }
 
+// ============================================================================
+// update
+// ============================================================================
 void ScreenManager::update() {
 
-    // 1) update screen
     if (_current) {
         _current->update();
     }
 
-    // 2) UiVersion → StatusBar dirty detection
+    // StatusBar versioning
     if (_current && _current->hasStatusBar()) {
 
         uint32_t v;
@@ -139,12 +150,18 @@ void ScreenManager::update() {
         }
     }
 
-    // 3) draw
     if (_current && _current->hasStatusBar()) {
         _statusBar->update();
     }
 
-    _bottomBar->update();
+    // ❌ BottomBar НЕ используется
+    // _bottomBar->update();
+
+    // ButtonBar — ВСЕГДА один и тот же
+    const bool wantButtons = _current && _current->hasButtonBar();
+    _layout->setHasButtonBar(wantButtons);
+    _buttonBar->setVisible(wantButtons);
+    _buttonBar->update();
 
     _sepStatus->update();
     _sepBottom->update();
@@ -154,10 +171,13 @@ void ScreenManager::update() {
     }
 }
 
+// ============================================================================
+// getters
+// ============================================================================
 bool ScreenManager::currentHasStatusBar() const {
     return _current && _current->hasStatusBar();
 }
 
 bool ScreenManager::currentHasBottomBar() const {
-    return _current && _current->hasBottomBar();
+    return false; // legacy отключён
 }

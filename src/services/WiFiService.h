@@ -42,6 +42,11 @@ public:
     void setEnabled(bool on);
     bool isEnabled() const;
 
+    // ===== STATUS =====
+// текущий SSID или nullptr если не подключены
+const char* currentSsid() const;
+
+
     // состояние подключения
     State state() const;
 

@@ -72,7 +72,10 @@ Buttons buttons(
     50,
     800
 );
-
+// =====================================================
+// LAYOUT
+// =====================================================
+LayoutService layout(tft);
 // =====================================================
 // UI VERSION
 // =====================================================
@@ -106,10 +109,6 @@ RtcService rtc(
     RTC_RST
 );
 
-// =====================================================
-// LAYOUT
-// =====================================================
-LayoutService layout(tft);
 
 // =====================================================
 // UI ELEMENTS
@@ -126,7 +125,11 @@ BottomBar bottomBar(
     layout,
     dht
 );
-
+ButtonBar buttonBar(
+    tft,
+    themeService,
+    layout
+);
 // =====================================================
 // CONNECTIVITY
 // =====================================================
@@ -138,8 +141,8 @@ ConnectivityService connectivity(
 // =====================================================
 // SEPARATORS
 // =====================================================
-UiSeparator sepStatus(tft, themeService, 0);
-UiSeparator sepBottom(tft, themeService, 0);
+UiSeparator sepStatus(tft, themeService, layout);
+UiSeparator sepBottom(tft, themeService, layout);
 
 // =====================================================
 // SCREENS
@@ -178,6 +181,7 @@ ScreenManager screenManager(
     clockScreen,
     statusBar,
     bottomBar,
+    buttonBar,        // ← ОБЯЗАТЕЛЬНО
     layout,
     sepStatus,
     sepBottom,

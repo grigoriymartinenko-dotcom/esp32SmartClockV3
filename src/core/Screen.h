@@ -4,7 +4,8 @@
 class Screen {
 public:
     virtual ~Screen() = default;
-
+// есть ли кнопки (ButtonBar) на этом экране
+virtual bool hasButtonBar() const { return false; }
     virtual void begin() = 0;
     virtual void update() = 0;
 

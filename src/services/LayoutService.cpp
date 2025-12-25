@@ -1,84 +1,58 @@
 #include "services/LayoutService.h"
 
 LayoutService::LayoutService(Adafruit_ST7735& tft)
-: _tft(tft)
-{}
+    : _tft(tft)
+{
+}
 
 void LayoutService::begin() {
     // геометрия считается динамически
 }
 
 // ===== FLAGS =====
-void LayoutService::setHasBottomBar(bool v) {
-    _hasBottomBar = v;
+
+void LayoutService::setHasStatusBar(bool v) {
+    _hasStatusBar = v;
 }
 
-bool LayoutService::hasBottomBar() const {
-    return _hasBottomBar;
+void LayoutService::setHasButtonBar(bool v) {
+    _hasButtonBar = v;
 }
 
-// ===== HEIGHTS =====
-int LayoutService::statusH() const {
-    return STATUS_H;
+bool LayoutService::hasStatusBar() const {
+    return _hasStatusBar;
 }
 
-int LayoutService::bottomH() const {
-    return _hasBottomBar ? BOTTOM_H : 0;
+bool LayoutService::hasButtonBar() const {
+    return _hasButtonBar;
 }
 
-int LayoutService::clockH() const {
-    int h = _tft.height() - STATUS_H;
-    if (_hasBottomBar) {
-        h -= BOTTOM_H;
-    }
-    return h;
+// ===== NEW HEIGHTS =====
+
+int LayoutService::statusBarH() const {
+    return _hasStatusBar ? STATUS_BAR_HEIGHT : 0;
 }
 
-// ===== Y POSITIONS =====
-int LayoutService::statusY() const {
+int LayoutService::buttonBarH() const {
+    return _hasButtonBar ? BUTTON_BAR_HEIGHT : 0;
+}
+
+int LayoutService::contentH() const {
+    return _tft.height()
+         - statusBarH()
+         - buttonBarH();
+}
+
+// ===== NEW Y =====
+
+int LayoutService::statusBarY() const {
     return 0;
 }
 
-int LayoutService::clockY() const {
-    return STATUS_H;
-}
-
-int LayoutService::bottomY() const {
-    return _tft.height() - BOTTOM_H;
-}
-
-// ===== BUTTON BAR (Settings / internal) =====
-int LayoutService::buttonBarH() const {
-    return BUTTONBAR_H;
+int LayoutService::contentY() const {
+    return statusBarH();
 }
 
 int LayoutService::buttonBarY() const {
-    return _tft.height() - BUTTONBAR_H;
-}
-
-// ===== SEPARATORS =====
-int LayoutService::sepStatusY() const {
-    return STATUS_H;
-}
-
-int LayoutService::sepBottomY() const {
-    if (!_hasBottomBar) {
-        return -1;
-    }
-    return bottomY();
-}
-
-// ===== SAFE CLOCK RECT =====
-int LayoutService::clockSafeY() const {
-    return sepStatusY() + SEPARATOR_SAFE;
-}
-
-int LayoutService::clockSafeH() const {
-    int top = clockSafeY();
-
-    if (_hasBottomBar) {
-        return sepBottomY() - SEPARATOR_SAFE - top;
-    }
-
-    return _tft.height() - top;
+    return _tft.height() - buttonBarH();
 }
