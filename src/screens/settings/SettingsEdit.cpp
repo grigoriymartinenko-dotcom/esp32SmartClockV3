@@ -1,4 +1,5 @@
 #include "screens/SettingsScreen.h"
+#include <Arduino.h>
 
 /*
  * SettingsEdit.cpp
@@ -179,4 +180,4 @@ void SettingsScreen::editDec() {
         _dirty = true;
         return;
     }
-} 
+}

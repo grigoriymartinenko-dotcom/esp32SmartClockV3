@@ -22,7 +22,6 @@ SettingsScreen::SettingsScreen(
     : Screen(themeService)
     , _tft(tft)
     , _layout(layoutService)
-    , _bar(tft, themeService, layoutService)
     , _night(nightService)
     , _time(timeService)
     , _wifi(wifiService)
@@ -50,11 +49,10 @@ void SettingsScreen::begin() {
     _wifiCharIdx = 0;
 
     _dirty = true;
-
     _needFullClear  = true;
     _lastDrawnLevel = _level;
 
-    _bar.setVisible(false);
+    _ui.bump(UiChannel::SCREEN);
 }
 
 // ============================================================================
@@ -65,14 +63,12 @@ void SettingsScreen::update() {
     if (_ui.changed(UiChannel::WIFI))
         _dirty = true;
 
-    if (_hintFlash > 0) {
+    if (_hintFlash > 0)
         _hintFlash--;
-        drawButtonHints();
-    }
 
     if (_dirty) {
         _dirty = false;
-        redrawAll();
+        redrawAll();   // реализовано в SettingsDraw.cpp
     }
 }
 
@@ -111,13 +107,11 @@ void SettingsScreen::onShortOk() {
     _pressedBtn = HintBtn::OK;
     _hintFlash  = 3;
 
-    // ROOT
     if (_level == Level::ROOT) {
         enterSubmenu(MENU[_selected].target);
         return;
     }
 
-    // Wi-Fi handled externally
     if (handleWifiShortOk())
         return;
 
@@ -169,6 +163,10 @@ void SettingsScreen::onThemeChanged() {
 }
 
 // ============================================================================
+// NAVIGATION
+// ============================================================================
+
+// ============================================================================
 // SUBMENU
 // ============================================================================
 void SettingsScreen::enterSubmenu(Level lvl) {
@@ -178,4 +176,8 @@ void SettingsScreen::enterSubmenu(Level lvl) {
 
     _needFullClear = true;
     _dirty = true;
+}
+
+void SettingsScreen::exitSubmenu(bool /*apply*/) {
+    enterSubmenu(Level::ROOT);
 }

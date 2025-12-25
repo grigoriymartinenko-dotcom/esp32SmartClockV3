@@ -4,7 +4,6 @@
 
 #include "core/Screen.h"
 #include "services/LayoutService.h"
-#include "ui/ButtonBar.h"
 #include "services/NightService.h"
 #include "services/UiVersionService.h"
 #include "services/TimeService.h"
@@ -21,6 +20,11 @@
  * ВАЖНО:
  *  Этот файл — ЕДИНСТВЕННЫЙ источник истины
  *  для ВСЕХ Settings*.cpp файлов.
+ *
+ * Архитектура:
+ *  - НЕ владеет BottomBar/StatusBar
+ *  - НЕ использует ButtonBar
+ *  - Координаты/зоны берёт ТОЛЬКО из LayoutService
  */
 
 class SettingsScreen : public Screen {
@@ -41,6 +45,7 @@ public:
 
     bool hasStatusBar() const override { return false; }
     bool hasBottomBar() const override { return true; }
+
     void onThemeChanged() override;
 
     // ===== Buttons =====
@@ -58,6 +63,7 @@ public:
 protected:
     // ===== DRAW =====
     void redrawAll();
+
     void drawRoot();
     void drawWifi();
     void drawWifiList();
@@ -65,6 +71,7 @@ protected:
     void drawTime();
     void drawNight();
     void drawTimezone();
+
     void drawButtonHints();
 
 private:
@@ -77,7 +84,7 @@ private:
     void navLeft();
     void navRight();
 
-    // ===== EDIT MODE (реализовано в SettingsEdit.cpp) =====
+    // ===== EDIT MODE (SettingsEdit.cpp) =====
     void enterEdit();
     void exitEdit(bool apply);
     void editInc();
@@ -97,7 +104,6 @@ private:
     // ===== SERVICES =====
     Adafruit_ST7735&  _tft;
     LayoutService&    _layout;
-    ButtonBar         _bar;
 
     NightService&     _night;
     TimeService&      _time;
@@ -165,8 +171,8 @@ private:
     static constexpr int NIGHT_STEP_MIN = 15;
 
     // ===== TIMEZONE =====
-    int32_t _tmpTzSec = 0;
-    int32_t _bakTzSec = 0;
+    int32_t _tmpTzSec  = 0;
+    int32_t _bakTzSec  = 0;
 
     int32_t _tmpDstSec = 0;
     int32_t _bakDstSec = 0;
