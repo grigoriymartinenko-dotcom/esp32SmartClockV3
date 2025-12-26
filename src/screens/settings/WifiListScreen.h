@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Adafruit_ST7735.h>
+#include <cstring>
 
 #include "core/Screen.h"
 #include "services/LayoutService.h"
@@ -15,14 +16,11 @@
  * Экран списка Wi-Fi сетей.
  *
  * UX:
- *  - Подключённая сеть помечается [Connected]
- *  - Нижнего текста "Connected" НЕТ
- *
- * OK:
- *  - на подключённой сети → Disconnect (Wi-Fi OFF)
- *  - на другой сети        → Connect
+ *  - Заголовок
+ *  - ОДНА строка статуса под заголовком (Connected / Reconnecting / Not connected)
+ *  - Сепаратор под заголовком и под статусом (локальный, внутри content)
+ *  - Список сетей
  */
-
 class WifiListScreen : public Screen {
 public:
     WifiListScreen(
@@ -37,10 +35,11 @@ public:
     // Screen
     void begin() override;
     void update() override;
-
+    void onShortLeft() ;
+    void onShortRight() ;
     bool hasStatusBar() const override { return false; }
-    bool hasBottomBar() const override { return false; }
-bool hasButtonBar() const override { return true; }
+  bool hasBottomBar() const override { return true; }
+    //bool hasButtonBar() const override { return true; }
 
     // Buttons
     void onShortOk();
@@ -54,21 +53,25 @@ private:
     };
 
     // drawing
-    void drawHeader();
-    void drawScanning();
-    void drawEmpty();
-    void drawList();
+    void drawHeader(int baseY);
+    void drawConnectionStatus(int baseY);
+    void drawScanning(int baseY);
+    void drawEmpty(int baseY);
+    void drawList(int baseY);
     void drawSeparator(int y);
 
     int  visibleRows() const;
     bool isConnectedSsid(const char* ssid) const;
 
+    // status tracking (чтобы Connected/Reconnecting обновлялось без bump)
+    bool connectionModelDirty();
+
 private:
-    Adafruit_ST7735&    _tft;
-    LayoutService&     _layout;
-    UiVersionService&  _ui;
-    WifiService&       _wifi;
-    PreferencesService&_prefs;
+    Adafruit_ST7735&     _tft;
+    LayoutService&      _layout;
+    UiVersionService&   _ui;
+    WifiService&        _wifi;
+    PreferencesService& _prefs;
 
     ButtonBar _buttons;
 
@@ -80,4 +83,8 @@ private:
 
     uint32_t _lastScreenVer = 0;
     uint32_t _lastWifiVer   = 0;
+
+    // последние значения Wi-Fi соединения (для детекта изменений)
+    WifiService::State _lastConnState = WifiService::State::OFF;
+    char               _lastConnSsid[40] = {0};
 };

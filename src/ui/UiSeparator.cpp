@@ -15,6 +15,7 @@ void UiSeparator::setY(int y) {
     if (_y == y)
         return;
 
+    // важно: помним старое место для очистки
     _y = y;
     _dirty = true;
 }
@@ -33,36 +34,43 @@ void UiSeparator::markDirty() {
 
 void UiSeparator::update() {
 
-    // --- если скрыт ---
+    // Если раньше рисовали — и теперь нужно стереть старое место (смена видимости или смена y)
+    const bool needClearOld =
+        (_wasVisible && (_dirty || !_visible || _y < 0) && _lastY >= 0);
+
+    if (needClearOld) {
+        clearAt(_lastY);
+    }
+
+    // Скрыт → ничего не рисуем
     if (!_visible) {
-        if (_wasVisible) {
-            clear();
-            _wasVisible = false;
-        }
+        _wasVisible = false;
+        _dirty = false;
         return;
     }
 
-    // --- если Y невалиден ---
+    // Невалидный Y → ничего не рисуем
     if (_y < 0) {
-        if (_wasVisible) {
-            clear();
-            _wasVisible = false;
-        }
+        _wasVisible = false;
+        _dirty = false;
         return;
     }
 
-    if (!_dirty && _wasVisible)
+    // Если не dirty и уже было нарисовано — можно выйти
+    if (!_dirty && _wasVisible && _lastY == _y)
         return;
 
+    // Рисуем линию
     draw();
-    _dirty = false;
+
+    _lastY = _y;
     _wasVisible = true;
+    _dirty = false;
 }
 
 void UiSeparator::draw() {
     const Theme& th = _theme.current();
 
-    // толщина линии = 1px
     _tft.drawFastHLine(
         0,
         _y,
@@ -71,13 +79,15 @@ void UiSeparator::draw() {
     );
 }
 
-void UiSeparator::clear() {
+void UiSeparator::clearAt(int y) {
+    if (y < 0) return;
+
     const Theme& th = _theme.current();
 
     // очищаем область толщиной 2px на всякий случай
     _tft.fillRect(
         0,
-        _y,
+        y,
         _tft.width(),
         2,
         th.bg

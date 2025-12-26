@@ -34,7 +34,7 @@ public:
     void update() override;
 
     bool hasStatusBar() const override { return true; }
-    bool hasBottomBar() const override { return false; }
+    //bool hasBottomBar() const override { return false; }
 
     // вызывается AppController
     void onShortLeft();

@@ -8,6 +8,7 @@ ScreenManager::ScreenManager(
     Screen& initial,
     StatusBar& statusBar,
     BottomBar& bottomBar,
+    ButtonBar& buttonBar,          // 🔥 ДОБАВЛЕНО
     LayoutService& layout,
     UiSeparator& sepStatus,
     UiSeparator& sepBottom,
@@ -19,6 +20,7 @@ ScreenManager::ScreenManager(
     , _prev(nullptr)
     , _statusBar(&statusBar)
     , _bottomBar(&bottomBar)
+    , _buttonBar(&buttonBar)       // 🔥 КЛЮЧЕВОЕ МЕСТО
     , _layout(&layout)
     , _sepStatus(&sepStatus)
     , _sepBottom(&sepBottom)
@@ -34,27 +36,28 @@ void ScreenManager::clearStatusArea() {
     if (!_tft || !_layout || !_theme) return;
 
     const Theme& th = _theme->current();
-    int h = _layout->statusBarY() + _layout->statusBarH() + 2;
+    const int h = _layout->statusBarY() + _layout->statusBarH() + 2;
 
     _tft->fillRect(0, 0, _tft->width(), h, th.bg);
 }
 
 void ScreenManager::applyLayout() {
 
-    // ===== Status separator =====
-    if (_current && _current->hasStatusBar()) {
-        _sepStatus->setY(_layout->statusBarY() + _layout->statusBarH());
-    } else {
-        _sepStatus->setY(-1);
-    }
+    const bool hasStatus  = (_current && _current->hasStatusBar());
+    const bool hasButtons = (_current && _current->hasButtonBar());
+
+    _sepStatus->setVisible(hasStatus);
+    _sepStatus->setY(hasStatus
+        ? _layout->statusBarY() + _layout->statusBarH()
+        : -1
+    );
     _sepStatus->markDirty();
 
-    // ===== Bottom separator =====
-    if (_current && _current->hasBottomBar()) {
-        _sepBottom->setY(_layout->bottomBarY());
-    } else {
-        _sepBottom->setY(-1);
-    }
+    _sepBottom->setVisible(hasButtons);
+    _sepBottom->setY(hasButtons
+        ? _layout->buttonBarY()
+        : -1
+    );
     _sepBottom->markDirty();
 }
 
@@ -64,24 +67,23 @@ void ScreenManager::applyLayout() {
 void ScreenManager::begin() {
     if (!_current) return;
 
-    const bool wantStatusBar = _current->hasStatusBar();
-    const bool wantBottomBar = _current->hasBottomBar();
+    const bool wantStatus  = _current->hasStatusBar();
+    const bool wantButtons = _current->hasButtonBar();
 
-    _layout->setHasStatusBar(wantStatusBar);
-    _layout->setHasBottomBar(wantBottomBar);
+    _layout->setHasStatusBar(wantStatus);
+    _layout->setHasBottomBar(wantButtons);
 
     applyLayout();
 
     _current->begin();
 
-    if (wantStatusBar) {
+    if (wantStatus) {
         _statusBar->markDirty();
     } else {
         clearStatusArea();
     }
 
-    _bottomBar->setVisible(wantBottomBar);
-    _bottomBar->markDirty();
+    _bottomBar->setVisible(true);
 
     _lastTimeVer   = _uiVersion->version(UiChannel::TIME);
     _lastThemeVer  = _uiVersion->version(UiChannel::THEME);
@@ -93,25 +95,22 @@ void ScreenManager::set(Screen& screen) {
     _prev = _current;
     _current = &screen;
 
-    const bool wantStatusBar = _current->hasStatusBar();
-    const bool wantBottomBar = _current->hasBottomBar();
+    const bool wantStatus  = _current->hasStatusBar();
+    const bool wantButtons = _current->hasButtonBar();
 
-    _layout->setHasStatusBar(wantStatusBar);
-    _layout->setHasBottomBar(wantBottomBar);
+    _layout->setHasStatusBar(wantStatus);
+    _layout->setHasBottomBar(wantButtons);
 
     applyLayout();
-
     _current->begin();
 
-    if (wantStatusBar) {
+    if (wantStatus) {
         _statusBar->markDirty();
     } else {
         clearStatusArea();
     }
 
-    _bottomBar->setVisible(wantBottomBar);
-    _bottomBar->markDirty();
-
+    _bottomBar->setVisible(false);
     _lastScreenVer = _uiVersion->version(UiChannel::SCREEN);
 }
 
@@ -120,13 +119,18 @@ void ScreenManager::set(Screen& screen) {
 // ============================================================================
 void ScreenManager::update() {
 
-    if (_current) {
-        _current->update();
-    }
+    if (!_current)
+        return;
 
-    // ===== STATUS BAR =====
-    if (_current && _current->hasStatusBar()) {
+    const bool wantStatus  = _current->hasStatusBar();
+    const bool wantButtons = _current->hasButtonBar();
 
+    _layout->setHasStatusBar(wantStatus);
+    _layout->setHasBottomBar(wantButtons);
+
+    applyLayout();
+
+    if (wantStatus) {
         uint32_t v;
 
         v = _uiVersion->version(UiChannel::TIME);
@@ -150,17 +154,18 @@ void ScreenManager::update() {
         _statusBar->update();
     }
 
-    // ===== BOTTOM BAR (КЛЮЧЕВОЕ МЕСТО) =====
-    if (_current) {
-        const bool wantBottomBar = _current->hasBottomBar();
-        _layout->setHasBottomBar(wantBottomBar);
-        _bottomBar->setVisible(wantBottomBar);
+    // ===== ButtonBar (визуальные кнопки) =====
+if (_buttonBar) {
+    _buttonBar->setVisible(wantButtons);   // 🔥 КЛЮЧЕВО
+    if (wantButtons) {
+        _buttonBar->update();
     }
-
-    _bottomBar->update();
-
+}
     _sepStatus->update();
     _sepBottom->update();
+
+    _current->update();
+
 }
 
 // ============================================================================
@@ -171,5 +176,5 @@ bool ScreenManager::currentHasStatusBar() const {
 }
 
 bool ScreenManager::currentHasBottomBar() const {
-    return _current && _current->hasBottomBar();
+    return _current && _current->hasButtonBar();
 }

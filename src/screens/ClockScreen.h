@@ -25,7 +25,7 @@ public:
     void update() override;
 
     bool hasStatusBar() const override { return true; }
-    bool hasBottomBar() const override { return true; }
+    //bool hasBottomBar() const override { return true; }
 
 private:
     void drawTime(bool force);
@@ -44,7 +44,7 @@ private:
     uint32_t lastScreenV = 0;
     uint32_t lastDhtV    = 0;
     uint32_t lastSensorV    = 0;
-    
+
 bool dhtDrawnOnce = false;
     uint8_t  fadeStep   = 0;
     bool     fadeActive = false;

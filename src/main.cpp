@@ -180,6 +180,7 @@ ScreenManager screenManager(
     clockScreen,
     statusBar,
     bottomBar,
+    buttonBar,
     layout,
     sepStatus,
     sepBottom,

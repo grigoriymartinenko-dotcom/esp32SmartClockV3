@@ -9,7 +9,7 @@
  * Правила:
  *  - геометрию берёт ТОЛЬКО из LayoutService
  *  - цвета — ТОЛЬКО через ThemeService::current()
- *  - корректная работа с default font и GFXfont (baseline-safe)
+ *  - baseline-safe для default font и GFXfont
  */
 
 ButtonBar::ButtonBar(
@@ -68,15 +68,30 @@ bool ButtonBar::anyFlashActive() const {
 }
 
 void ButtonBar::update() {
-    if (!_visible && !_wasVisible) return;
 
-    if (_dirty || anyFlashActive() || _visible != _wasVisible) {
+    const int h = _layout.buttonBarH();
+    if (h <= 0) {
+        // нижней зоны нет — ничего не рисуем
+        _wasVisible = false;
+        return;
+    }
+
+    // Если бар был виден, но стал невидим — очистим ОДИН раз
+    if (!_visible && _wasVisible) {
         clear();
-        if (_visible) {
-            draw();
-        }
+        _wasVisible = false;
+        return;
+    }
+
+    if (!_visible)
+        return;
+
+    // visible == true
+    if (_dirty || anyFlashActive() || !_wasVisible) {
+        clear();
+        draw();
         _dirty = false;
-        _wasVisible = _visible;
+        _wasVisible = true;
     }
 
     // уменьшение flash-счётчиков
@@ -95,6 +110,7 @@ void ButtonBar::clear() {
 
     const int y = _layout.buttonBarY();
     const int h = _layout.buttonBarH();
+    if (h <= 0) return;
 
     _tft.fillRect(
         0,
@@ -106,9 +122,11 @@ void ButtonBar::clear() {
 }
 
 void ButtonBar::draw() {
+
     const int y = _layout.buttonBarY();
     const int h = _layout.buttonBarH();
     const int w = _tft.width();
+    if (h <= 0) return;
 
     const int cellW = w / 4;
 
@@ -146,12 +164,10 @@ void ButtonBar::drawCell(
         fg = th.textPrimary;
     }
 
-    // фон ячейки
     _tft.fillRect(x, y, w, h, bg);
 
     if (!label || !*label) return;
 
-    // ===== baseline-safe центрирование текста =====
     int16_t x1, y1;
     uint16_t tw, thh;
 

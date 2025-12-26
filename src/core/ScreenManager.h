@@ -4,7 +4,7 @@
 
 #include "core/Screen.h"
 #include "ui/StatusBar.h"
-#include "ui/BottomBar.h"
+#include "ui/BottomBar.h"   // legacy, не используется
 #include "ui/ButtonBar.h"
 #include "ui/UiSeparator.h"
 #include "ui/UiDebugOverlay.h"
@@ -19,6 +19,7 @@ public:
         Screen& initial,
         StatusBar& statusBar,
         BottomBar& bottomBar,
+        ButtonBar& buttonBar,          // 🔥 ДОБАВЛЕНО
         LayoutService& layout,
         UiSeparator& sepStatus,
         UiSeparator& sepBottom,
@@ -47,8 +48,8 @@ private:
     uint32_t _lastScreenVer = 0;
 
     StatusBar*        _statusBar;
-    BottomBar*        _bottomBar;
-    ButtonBar*        _buttonBar;      // ← ОБЯЗАТЕЛЬНО
+    BottomBar*        _bottomBar;   // legacy
+    ButtonBar*        _buttonBar;   // 🔥 ТЕПЕРЬ РЕАЛЬНО ИСПОЛЬЗУЕТСЯ
     LayoutService*    _layout;
     UiSeparator*      _sepStatus;
     UiSeparator*      _sepBottom;
