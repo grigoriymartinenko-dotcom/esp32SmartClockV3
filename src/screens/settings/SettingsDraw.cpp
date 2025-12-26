@@ -45,8 +45,7 @@ void SettingsScreen::redrawAll() {
         case Level::TIMEZONE:      drawTimezone();     break;
     }
 
-    drawButtonHints();
-}
+    }
 
 // ============================================================================
 // ROOT
@@ -258,28 +257,3 @@ void SettingsScreen::drawTimezone() {
 // ============================================================================
 // BUTTON HINTS
 // ============================================================================
-void SettingsScreen::drawButtonHints() {
-
-    const Theme& th = theme();
-    int bottomY = _layout.buttonBarY();
-
-    // ❌ НЕ затираем зону ButtonBar
-    // ButtonBar — единственный владелец нижней зоны
-
-    _tft.setTextSize(1);
-    _tft.setCursor(4, bottomY + 4);
-
-    auto col = [&](HintBtn b) {
-        return (_hintFlash > 0 && _pressedBtn == b)
-            ? th.select
-            : th.muted;
-    };
-
-    bool edit = (_mode == UiMode::EDIT);
-/*
-    _tft.setTextColor(col(HintBtn::LEFT),  th.bg); _tft.print("< ");
-    _tft.setTextColor(col(HintBtn::RIGHT), th.bg); _tft.print(">   ");
-    _tft.setTextColor(col(HintBtn::OK),    th.bg); _tft.print(edit ? "OK+  " : "OK   ");
-    _tft.setTextColor(col(HintBtn::BACK),  th.bg); _tft.print(edit ? "BACK+" : "BACK");
-    */
-}

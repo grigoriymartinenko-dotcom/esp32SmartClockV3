@@ -17,7 +17,8 @@ SettingsScreen::SettingsScreen(
     NightService& nightService,
     TimeService& timeService,
     WifiService& wifiService,
-    UiVersionService& uiVersion
+    UiVersionService& uiVersion,
+    ButtonBar& buttonBar              // 🔥 ДОБАВИТЬ
 )
     : Screen(themeService)
     , _tft(tft)
@@ -26,8 +27,9 @@ SettingsScreen::SettingsScreen(
     , _time(timeService)
     , _wifi(wifiService)
     , _ui(uiVersion)
-{}
-
+    , _buttons(buttonBar)             // 🔥 ДОБАВИТЬ
+{
+}
 // ============================================================================
 // begin
 // ============================================================================
@@ -47,7 +49,7 @@ void SettingsScreen::begin() {
     memset(_wifiPass, 0, sizeof(_wifiPass));
     _wifiPassLen = 0;
     _wifiCharIdx = 0;
-
+updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
     _dirty = true;
     _needFullClear  = true;
     _lastDrawnLevel = _level;
@@ -180,4 +182,19 @@ void SettingsScreen::enterSubmenu(Level lvl) {
 
 void SettingsScreen::exitSubmenu(bool /*apply*/) {
     enterSubmenu(Level::ROOT);
+}
+void SettingsScreen::updateButtonBarContext() {
+
+    if (_mode == UiMode::NAV) {
+        _buttons.setLabels("<", "OK", ">", "BACK");
+        _buttons.setActions(true, true, true, true);
+        _buttons.setHighlight(false, false, false, false);
+    } else {
+        // EDIT
+        _buttons.setLabels("-", "OK+", "+", "BACK+");
+        _buttons.setActions(true, true, true, true);
+        _buttons.setHighlight(false, true, false, false);
+    }
+
+    _buttons.markDirty();
 }

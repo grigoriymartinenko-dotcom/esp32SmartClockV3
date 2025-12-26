@@ -18,7 +18,7 @@
 // ============================================================================
 void SettingsScreen::enterEdit() {
     _mode = UiMode::EDIT;
-
+updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
     // backup значений
     if (_level == Level::WIFI) {
         _bakWifiOn = _tmpWifiOn;
@@ -71,6 +71,7 @@ void SettingsScreen::exitEdit(bool apply) {
 
     // APPLY делаем НЕ здесь
     _mode = UiMode::NAV;
+    updateButtonBarContext();      // 🔥 ДОБАВЛЕНО
     _dirty = true;
 }
 

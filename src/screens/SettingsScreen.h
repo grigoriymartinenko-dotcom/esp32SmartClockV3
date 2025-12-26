@@ -9,6 +9,7 @@
 #include "services/TimeService.h"
 #include "services/PreferencesService.h"
 #include "services/WifiService.h"
+#include "ui/ButtonBar.h"
 
 #include "screens/settings/SettingsTypes.h"
 
@@ -17,14 +18,9 @@
  * --------------
  * Экран настроек устройства.
  *
- * ВАЖНО:
- *  Этот файл — ЕДИНСТВЕННЫЙ источник истины
- *  для ВСЕХ Settings*.cpp файлов.
- *
- * Архитектура:
- *  - НЕ владеет BottomBar/StatusBar
- *  - НЕ использует ButtonBar
- *  - Координаты/зоны берёт ТОЛЬКО из LayoutService
+ * Контекст ButtonBar:
+ *  NAV  : <  OK  >  BACK
+ *  EDIT : -  OK+ +  BACK+
  */
 
 class SettingsScreen : public Screen {
@@ -36,7 +32,8 @@ public:
         NightService& nightService,
         TimeService& timeService,
         WifiService& wifiService,
-        UiVersionService& uiVersion
+        UiVersionService& uiVersion,
+        ButtonBar& buttonBar          // 🔥 ДОБАВЛЕНО
     );
 
     // ===== Screen =====
@@ -44,7 +41,7 @@ public:
     void update() override;
 
     bool hasStatusBar() const override { return false; }
-    //bool hasBottomBar() const override { return true; }
+    bool hasButtonBar() const override { return true; }
 
     void onThemeChanged() override;
 
@@ -72,19 +69,20 @@ protected:
     void drawNight();
     void drawTimezone();
 
-    void drawButtonHints();
-
 private:
     using Level    = SettingsTypes::Level;
     using UiMode   = SettingsTypes::UiMode;
     using HintBtn  = SettingsTypes::HintBtn;
     using MenuItem = SettingsTypes::MenuItem;
 
+    // ===== ButtonBar context =====
+    void updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
+
     // ===== NAVIGATION =====
     void navLeft();
     void navRight();
 
-    // ===== EDIT MODE (SettingsEdit.cpp) =====
+    // ===== EDIT MODE =====
     void enterEdit();
     void exitEdit(bool apply);
     void editInc();
@@ -94,7 +92,7 @@ private:
     void enterSubmenu(Level lvl);
     void exitSubmenu(bool apply);
 
-    // ===== WIFI HANDLERS (SettingsWifi.cpp) =====
+    // ===== WIFI HANDLERS =====
     bool handleWifiShortOk();
     bool handleWifiShortBack();
     bool handleWifiLongOk();
@@ -109,6 +107,7 @@ private:
     TimeService&      _time;
     WifiService&      _wifi;
     UiVersionService& _ui;
+    ButtonBar&        _buttons;      // 🔥 ДОБАВЛЕНО
 
     // ===== UI STATE =====
     bool   _dirty = true;
@@ -137,7 +136,7 @@ private:
         "0123456789"
         "_-@.!";
 
-    // ===== BUTTON FEEDBACK =====
+    // ===== BUTTON FEEDBACK (legacy, UI hints) =====
     HintBtn _pressedBtn = HintBtn::NONE;
     uint8_t _hintFlash  = 0;
 

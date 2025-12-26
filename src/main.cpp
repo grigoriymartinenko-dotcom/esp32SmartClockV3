@@ -170,7 +170,8 @@ SettingsScreen settingsScreen(
     nightService,
     timeService,
     wifi,          // 🔹 ОБЯЗАТЕЛЬНО
-    uiVersion
+    uiVersion,
+    buttonBar          // 🔥 ДОБАВИТЬ
 );
 
 // =====================================================
