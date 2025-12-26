@@ -15,12 +15,21 @@
  * --------------
  * Экран списка Wi-Fi сетей.
  *
- * UX:
- *  - Заголовок
- *  - ОДНА строка статуса под заголовком (Connected / Reconnecting / Not connected)
- *  - Сепаратор под заголовком и под статусом (локальный, внутри content)
- *  - Список сетей
+ * ButtonBar контекст:
+ *
+ * SCANNING:
+ *      BACK
+ *
+ * READY (SSID):
+ *   <   SELECT   >   BACK
+ *
+ * READY (RESCAN):
+ *   <   RESCAN   >   BACK
+ *
+ * CONNECTED / RECONNECTING:
+ *      BACK
  */
+
 class WifiListScreen : public Screen {
 public:
     WifiListScreen(
@@ -29,19 +38,20 @@ public:
         LayoutService& layout,
         UiVersionService& ui,
         WifiService& wifi,
-        PreferencesService& prefs
+        PreferencesService& prefs,
+        ButtonBar& buttonBar
     );
 
-    // Screen
+    // ===== Screen =====
     void begin() override;
     void update() override;
-    void onShortLeft() ;
-    void onShortRight() ;
-    bool hasStatusBar() const override { return false; }
-  bool hasBottomBar() const override { return true; }
-    //bool hasButtonBar() const override { return true; }
 
-    // Buttons
+    bool hasStatusBar() const override { return false; }
+    bool hasButtonBar() const override { return true; }
+
+    // ===== Buttons =====
+    void onShortLeft();
+    void onShortRight();
     void onShortOk();
     void onShortBack();
 
@@ -49,21 +59,25 @@ private:
     enum class State {
         SCANNING,
         READY,
-        EMPTY
+        CONNECTED,
+        RECONNECTING
     };
 
-    // drawing
+    // ===== Drawing =====
+    void redrawAll();
     void drawHeader(int baseY);
     void drawConnectionStatus(int baseY);
     void drawScanning(int baseY);
-    void drawEmpty(int baseY);
     void drawList(int baseY);
     void drawSeparator(int y);
 
     int  visibleRows() const;
     bool isConnectedSsid(const char* ssid) const;
 
-    // status tracking (чтобы Connected/Reconnecting обновлялось без bump)
+    // ===== ButtonBar =====
+    void updateButtonBarContext();
+
+    // ===== Helpers =====
     bool connectionModelDirty();
 
 private:
@@ -72,8 +86,7 @@ private:
     UiVersionService&   _ui;
     WifiService&        _wifi;
     PreferencesService& _prefs;
-
-    ButtonBar _buttons;
+    ButtonBar&          _buttons;
 
     State _state = State::SCANNING;
 
@@ -84,7 +97,6 @@ private:
     uint32_t _lastScreenVer = 0;
     uint32_t _lastWifiVer   = 0;
 
-    // последние значения Wi-Fi соединения (для детекта изменений)
     WifiService::State _lastConnState = WifiService::State::OFF;
     char               _lastConnSsid[40] = {0};
 };
