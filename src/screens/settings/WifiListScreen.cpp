@@ -32,7 +32,8 @@ void WifiListScreen::begin() {
     _selected = 0;
     _netCount = _wifi.networksCount();
 
-    _state = _wifi.isScanning()
+    // начальное состояние — ТОЛЬКО от ScanState
+    _state = (_wifi.scanState() == WifiService::ScanState::SCANNING)
         ? State::SCANNING
         : State::READY;
 
@@ -40,32 +41,31 @@ void WifiListScreen::begin() {
     _lastScreenVer = _ui.version(UiChannel::SCREEN);
 
     updateButtonBarContext();
+    redrawAll();
 }
 
 void WifiListScreen::update() {
 
-    // --- determine state from WifiService ---
-    if (_wifi.isScanning()) {
-        _state = State::SCANNING;
-    } else {
-        _netCount = _wifi.networksCount();
+    // ------------------------------------------------------------
+    // Scan lifecycle → экранное состояние
+    // ------------------------------------------------------------
+    switch (_wifi.scanState()) {
 
-        switch (_wifi.state()) {
-            case WifiService::State::ONLINE:
-                _state = State::CONNECTED;
-                break;
+        case WifiService::ScanState::SCANNING:
+            _state = State::SCANNING;
+            break;
 
-            case WifiService::State::CONNECTING:
-                _state = State::RECONNECTING;
-                break;
-
-            default:
-                _state = State::READY;
-                break;
-        }
+        case WifiService::ScanState::DONE:
+        case WifiService::ScanState::FAILED:
+        case WifiService::ScanState::IDLE:
+        default:
+            _state = State::READY;
+            break;
     }
 
-    if (connectionModelDirty()) {
+    _netCount = _wifi.networksCount();
+
+    if (_ui.changed(UiChannel::WIFI) || _ui.changed(UiChannel::SCREEN)) {
         updateButtonBarContext();
         redrawAll();
     }
@@ -109,15 +109,22 @@ void WifiListScreen::drawConnectionStatus(int baseY) {
     const Theme& th = theme();
     _tft.setCursor(8, baseY);
 
-    if (_state == State::CONNECTED) {
-        _tft.setTextColor(th.textPrimary, th.bg);
-        _tft.print("Connected");
-    } else if (_state == State::RECONNECTING) {
-        _tft.setTextColor(th.warn, th.bg);
-        _tft.print("Reconnecting...");
-    } else {
-        _tft.setTextColor(th.muted, th.bg);
-        _tft.print("Not connected");
+    switch (_wifi.state()) {
+
+        case WifiService::State::ONLINE:
+            _tft.setTextColor(th.textPrimary, th.bg);
+            _tft.print("Connected");
+            break;
+
+        case WifiService::State::CONNECTING:
+            _tft.setTextColor(th.warn, th.bg);
+            _tft.print("Reconnecting...");
+            break;
+
+        default:
+            _tft.setTextColor(th.muted, th.bg);
+            _tft.print("Not connected");
+            break;
     }
 }
 
@@ -180,18 +187,6 @@ bool WifiListScreen::isConnectedSsid(const char* ssid) const {
         && strcmp(ssid, _wifi.currentSsid()) == 0;
 }
 
-bool WifiListScreen::connectionModelDirty() {
-
-    const WifiService::State s = _wifi.state();
-
-    if (s != _lastConnState) {
-        _lastConnState = s;
-        return true;
-    }
-
-    return false;
-}
-
 // ============================================================================
 // ButtonBar context
 // ============================================================================
@@ -202,8 +197,6 @@ void WifiListScreen::updateButtonBarContext() {
     switch (_state) {
 
         case State::SCANNING:
-        case State::CONNECTED:
-        case State::RECONNECTING:
             _buttons.setActions(false, false, false, true);
             _buttons.setLabels(nullptr, nullptr, nullptr, "BACK");
             break;
@@ -221,6 +214,9 @@ void WifiListScreen::updateButtonBarContext() {
             }
             break;
         }
+
+        default:
+            break;
     }
 
     _buttons.markDirty();
@@ -238,6 +234,7 @@ void WifiListScreen::onShortLeft() {
         if (_selected < _scroll)
             _scroll = _selected;
         updateButtonBarContext();
+        redrawAll();
     }
 }
 
@@ -252,6 +249,7 @@ void WifiListScreen::onShortRight() {
         if (_selected >= _scroll + visibleRows())
             _scroll = _selected - visibleRows() + 1;
         updateButtonBarContext();
+        redrawAll();
     }
 }
 
@@ -264,15 +262,15 @@ void WifiListScreen::onShortOk() {
         _wifi.startScan();
         _state = State::SCANNING;
         updateButtonBarContext();
+        redrawAll();
         return;
     }
 
     // SELECT
     const char* ssid = _wifi.ssidAt(_selected);
-    if (!ssid) return;
+    if (!ssid || !ssid[0]) return;
 
     _wifi.connect(ssid, nullptr);
-    _state = State::RECONNECTING;
     updateButtonBarContext();
 }
 

@@ -44,8 +44,7 @@ void SettingsScreen::redrawAll() {
         case Level::NIGHT:         drawNight();        break;
         case Level::TIMEZONE:      drawTimezone();     break;
     }
-
-    }
+}
 
 // ============================================================================
 // ROOT
@@ -138,7 +137,10 @@ void SettingsScreen::drawWifiList() {
 
     _tft.setTextSize(1);
 
-    if (_wifi.isScanning()) {
+    const WifiService::ScanState scan = _wifi.scanState();
+
+    // ---------------- Scanning ----------------
+    if (scan == WifiService::ScanState::SCANNING) {
         _tft.setCursor(20, 50);
         _tft.setTextColor(th.muted, th.bg);
         _tft.print("Scanning...");
@@ -151,7 +153,10 @@ void SettingsScreen::drawWifiList() {
     const int netCount  = _wifi.networksCount();
     const int rescanIdx = netCount;
 
-    if (_wifi.isScanFinished() && netCount == 0) {
+    // ---------------- No networks ----------------
+    if ((scan == WifiService::ScanState::DONE ||
+         scan == WifiService::ScanState::FAILED) && netCount == 0) {
+
         bool sel = (_wifiListSelected == 0);
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(8, y + 4);
@@ -209,51 +214,33 @@ void SettingsScreen::drawWifiPassword() {
 
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.setCursor(10, 60);
-    _tft.print("Pass:");
-    _tft.setCursor(60, 60);
     for (int i = 0; i < _wifiPassLen; i++)
         _tft.print('*');
 }
 
 // ============================================================================
-// TIME
+// TIME / NIGHT / TIMEZONE
 // ============================================================================
 void SettingsScreen::drawTime() {
-
     const Theme& th = theme();
-
     _tft.setTextSize(2);
     _tft.setCursor(40, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Time");
 }
 
-// ============================================================================
-// NIGHT
-// ============================================================================
 void SettingsScreen::drawNight() {
-
     const Theme& th = theme();
-
     _tft.setTextSize(2);
     _tft.setCursor(24, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Night mode");
 }
 
-// ============================================================================
-// TIMEZONE
-// ============================================================================
 void SettingsScreen::drawTimezone() {
-
     const Theme& th = theme();
-
     _tft.setTextSize(2);
     _tft.setCursor(18, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Timezone");
 }
-
-// ============================================================================
-// BUTTON HINTS
-// ============================================================================

@@ -12,12 +12,13 @@
  * Управляет Wi-Fi:
  *  - ON / OFF
  *  - CONNECTING / ONLINE / ERROR
- *  - ASYNC scan сетей
+ *  - ASYNC scan сетей (с явным lifecycle)
  *  - CONNECT к выбранному SSID
  *
  * ВАЖНО:
  *  WifiService НЕ знает про UI.
- *  Он только меняет State и делает ui.bump(WIFI).
+ *  Он только меняет State / ScanState
+ *  и делает ui.bump(UiChannel::WIFI).
  */
 
 class WifiService {
@@ -27,6 +28,13 @@ public:
         CONNECTING,
         ONLINE,
         ERROR
+    };
+
+    enum class ScanState {
+        IDLE,
+        SCANNING,
+        DONE,
+        FAILED
     };
 
     WifiService(
@@ -43,33 +51,25 @@ public:
     bool isEnabled() const;
 
     // ===== STATUS =====
-// текущий SSID или nullptr если не подключены
-const char* currentSsid() const;
-
-
-    // состояние подключения
     State state() const;
+
+    // текущий SSID или nullptr если не подключены
+    const char* currentSsid() const;
 
     // ===== CONNECT =====
     void connect(const char* ssid);
-    void connect(const char* ssid, const char* pass); // 🔥 НОВОЕ
+    void connect(const char* ssid, const char* pass);
 
     // ===== SCAN =====
     void startScan();
-    bool isScanning() const;
-    bool isScanFinished() const;
 
+    ScanState scanState() const;
     int  networksCount() const;
     const char* ssidAt(int i) const;
 
 private:
     void start();
     void stop();
-
-    // ===== scan state =====
-    bool _scanInProgress = false;
-    bool _scanFinished  = false;
-    int  _scanCount     = 0;
 
     // ===== deps =====
     UiVersionService&    _ui;
@@ -82,6 +82,10 @@ private:
     // ===== connect timeout =====
     unsigned long _connectStartMs = 0;
     static constexpr unsigned long CONNECT_TIMEOUT_MS = 15000;
+
+    // ===== scan state =====
+    ScanState _scanState = ScanState::IDLE;
+    int       _scanCount = 0;
 
     // ===== scan cache =====
     std::vector<String> _ssids;
