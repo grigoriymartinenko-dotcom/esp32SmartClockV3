@@ -1,14 +1,7 @@
 #include "ui/ButtonBar.h"
 #include <Adafruit_GFX.h>
 
-/*
- * ButtonBar
- * ---------
- * ФИНАЛЬНАЯ версия:
- *  - текстовые подписи
- *  - одинаково с первого кадра
- *  - независим от состояния других экранов
- */
+static constexpr int BASELINE_SHIFT = -2;
 
 ButtonBar::ButtonBar(
     Adafruit_ST7735& tft,
@@ -19,6 +12,11 @@ ButtonBar::ButtonBar(
     , _themeService(themeService)
     , _layout(layoutService)
 {
+    // SAFE DEFAULT — чтобы ButtonBar не была пустой
+    _labelLeft  = "<";
+    _labelOk    = "OK";
+    _labelRight = ">";
+    _labelBack  = "BACK";
 }
 
 // ============================================================================
@@ -47,6 +45,19 @@ void ButtonBar::setHighlight(bool left, bool ok, bool right, bool back) {
     _hiOk    = ok;
     _hiRight = right;
     _hiBack  = back;
+    _dirty = true;
+}
+
+void ButtonBar::setLabels(
+    const char* left,
+    const char* ok,
+    const char* right,
+    const char* back
+) {
+    _labelLeft  = left;
+    _labelOk    = ok;
+    _labelRight = right;
+    _labelBack  = back;
     _dirty = true;
 }
 
@@ -130,16 +141,16 @@ void ButtonBar::draw() {
     const int w = _tft.width();
     const int cellW = w / 4;
 
-    drawCell(0 * cellW, y, cellW, h, LABEL_LEFT,
+    drawCell(0 * cellW, y, cellW, h, _labelLeft,
              _hasLeft, _hiLeft, _flashLeft);
 
-    drawCell(1 * cellW, y, cellW, h, LABEL_OK,
+    drawCell(1 * cellW, y, cellW, h, _labelOk,
              _hasOk, _hiOk, _flashOk);
 
-    drawCell(2 * cellW, y, cellW, h, LABEL_RIGHT,
+    drawCell(2 * cellW, y, cellW, h, _labelRight,
              _hasRight, _hiRight, _flashRight);
 
-    drawCell(3 * cellW, y, cellW, h, LABEL_BACK,
+    drawCell(3 * cellW, y, cellW, h, _labelBack,
              _hasBack, _hiBack, _flashBack);
 }
 
@@ -168,7 +179,6 @@ void ButtonBar::drawCell(
 
     if (!label || !*label) return;
 
-    // ЖЁСТКО фиксируем GFX-состояние
     _tft.setFont(nullptr);
     _tft.setTextSize(1);
     _tft.setTextWrap(false);
@@ -178,10 +188,8 @@ void ButtonBar::drawCell(
     uint16_t tw, thh;
     _tft.getTextBounds(label, 0, 0, &x1, &y1, &tw, &thh);
 
-static constexpr int BASELINE_SHIFT = 7;
-static constexpr int BASELINE_LEFT = 5;
-    const int textX = x-BASELINE_LEFT+ (w - (int)tw) / 2;
-    const int baselineY = y + (h / 2) + (thh / 2) - y1 - BASELINE_SHIFT;
+    const int textX = x + (w - (int)tw) / 2;
+    const int baselineY = y + (h / 2) + (thh / 2) - y1 + BASELINE_SHIFT;
 
     _tft.setCursor(textX, baselineY);
     _tft.print(label);

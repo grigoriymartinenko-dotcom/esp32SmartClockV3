@@ -7,13 +7,12 @@
 /*
  * ButtonBar
  * ---------
- * ВИЗУАЛЬНАЯ панель кнопок.
+ * Визуальная панель кнопок.
  *
- * ФИНАЛЬНЫЕ ПРАВИЛА:
- *  - ОДИН стиль на всех экранах
- *  - ТОЛЬКО текстовые подписи
- *  - НИКАКИХ иконок / UTF-8
- *  - ОДИН внешний вид с первого кадра
+ * Принципы:
+ *  - ButtonBar НЕ знает смысла кнопок
+ *  - Экран задаёт подписи и состояния
+ *  - ButtonBar только рисует
  */
 
 class ButtonBar {
@@ -33,9 +32,18 @@ public:
 
     void update();
 
+    // visibility / state
     void setVisible(bool visible);
     void setActions(bool left, bool ok, bool right, bool back);
     void setHighlight(bool left, bool ok, bool right, bool back);
+
+    // 🔑 ШАГ 2.2 — контекстные подписи
+    void setLabels(
+        const char* left,
+        const char* ok,
+        const char* right,
+        const char* back
+    );
 
     void flash(ButtonId id);
     void markDirty();
@@ -61,7 +69,6 @@ private:
     bool _visible    = true;
     bool _wasVisible = false;
     bool _dirty      = true;
-
     int  _lastBarH   = -1;
 
     bool _hasLeft  = true;
@@ -74,16 +81,15 @@ private:
     bool _hiRight = false;
     bool _hiBack  = false;
 
+    const char* _labelLeft  = nullptr;
+    const char* _labelOk    = nullptr;
+    const char* _labelRight = nullptr;
+    const char* _labelBack  = nullptr;
+
     uint8_t _flashLeft  = 0;
     uint8_t _flashOk    = 0;
     uint8_t _flashRight = 0;
     uint8_t _flashBack  = 0;
 
     static constexpr uint8_t FLASH_FRAMES = 6;
-
-    // ===== ФИКСИРОВАННЫЕ ПОДПИСИ =====
-    static constexpr const char* LABEL_LEFT  = "<";
-    static constexpr const char* LABEL_OK    = "OK";
-    static constexpr const char* LABEL_RIGHT = ">";
-    static constexpr const char* LABEL_BACK  = "BACK";
 };
