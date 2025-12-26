@@ -261,12 +261,13 @@ void SettingsScreen::drawTimezone() {
 void SettingsScreen::drawButtonHints() {
 
     const Theme& th = theme();
-    int y0 = _layout.buttonBarY();
+    int bottomY = _layout.buttonBarY();
 
-    _tft.fillRect(0, y0, _tft.width(), _tft.height() - y0, th.bg);
+    // ❌ НЕ затираем зону ButtonBar
+    // ButtonBar — единственный владелец нижней зоны
 
     _tft.setTextSize(1);
-    _tft.setCursor(4, y0 + 4);
+    _tft.setCursor(4, bottomY + 4);
 
     auto col = [&](HintBtn b) {
         return (_hintFlash > 0 && _pressedBtn == b)
@@ -275,9 +276,10 @@ void SettingsScreen::drawButtonHints() {
     };
 
     bool edit = (_mode == UiMode::EDIT);
-
+/*
     _tft.setTextColor(col(HintBtn::LEFT),  th.bg); _tft.print("< ");
     _tft.setTextColor(col(HintBtn::RIGHT), th.bg); _tft.print(">   ");
     _tft.setTextColor(col(HintBtn::OK),    th.bg); _tft.print(edit ? "OK+  " : "OK   ");
     _tft.setTextColor(col(HintBtn::BACK),  th.bg); _tft.print(edit ? "BACK+" : "BACK");
+    */
 }

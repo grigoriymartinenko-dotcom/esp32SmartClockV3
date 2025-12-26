@@ -8,9 +8,12 @@
  * ButtonBar
  * ---------
  * ВИЗУАЛЬНАЯ панель кнопок.
- * ❌ НЕТ GPIO
- * ❌ НЕТ millis()
- * ❌ НЕТ логики long-press
+ *
+ * ФИНАЛЬНЫЕ ПРАВИЛА:
+ *  - ОДИН стиль на всех экранах
+ *  - ТОЛЬКО текстовые подписи
+ *  - НИКАКИХ иконок / UTF-8
+ *  - ОДИН внешний вид с первого кадра
  */
 
 class ButtonBar {
@@ -34,19 +37,19 @@ public:
     void setActions(bool left, bool ok, bool right, bool back);
     void setHighlight(bool left, bool ok, bool right, bool back);
 
-    // кратковременная подсветка "нажатия"
     void flash(ButtonId id);
-
     void markDirty();
 
 private:
     void clear();
     void draw();
-    void drawCell(int x, int y, int w, int h,
-                  const char* label,
-                  bool enabled,
-                  bool highlight,
-                  bool flash);
+    void drawCell(
+        int x, int y, int w, int h,
+        const char* label,
+        bool enabled,
+        bool highlight,
+        bool flash
+    );
 
     bool anyFlashActive() const;
 
@@ -58,6 +61,8 @@ private:
     bool _visible    = true;
     bool _wasVisible = false;
     bool _dirty      = true;
+
+    int  _lastBarH   = -1;
 
     bool _hasLeft  = true;
     bool _hasOk    = true;
@@ -74,6 +79,11 @@ private:
     uint8_t _flashRight = 0;
     uint8_t _flashBack  = 0;
 
-    // ⬆️ БЫЛО 2 — СТАЛО 6
     static constexpr uint8_t FLASH_FRAMES = 6;
+
+    // ===== ФИКСИРОВАННЫЕ ПОДПИСИ =====
+    static constexpr const char* LABEL_LEFT  = "<";
+    static constexpr const char* LABEL_OK    = "OK";
+    static constexpr const char* LABEL_RIGHT = ">";
+    static constexpr const char* LABEL_BACK  = "BACK";
 };

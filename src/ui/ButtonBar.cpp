@@ -4,12 +4,10 @@
 /*
  * ButtonBar
  * ---------
- * Визуальная панель кнопок.
- *
- * Правила:
- *  - геометрию берёт ТОЛЬКО из LayoutService
- *  - цвета — ТОЛЬКО через ThemeService::current()
- *  - baseline-safe для default font и GFXfont
+ * ФИНАЛЬНАЯ версия:
+ *  - текстовые подписи
+ *  - одинаково с первого кадра
+ *  - независим от состояния других экранов
  */
 
 ButtonBar::ButtonBar(
@@ -26,7 +24,6 @@ ButtonBar::ButtonBar(
 // ============================================================================
 // Public API
 // ============================================================================
-
 void ButtonBar::markDirty() {
     _dirty = true;
 }
@@ -67,16 +64,25 @@ bool ButtonBar::anyFlashActive() const {
     return _flashLeft || _flashOk || _flashRight || _flashBack;
 }
 
+// ============================================================================
+// Update
+// ============================================================================
 void ButtonBar::update() {
 
     const int h = _layout.buttonBarH();
+
+    if (h != _lastBarH) {
+        clear();
+        _dirty = true;
+        _wasVisible = false;
+        _lastBarH = h;
+    }
+
     if (h <= 0) {
-        // нижней зоны нет — ничего не рисуем
         _wasVisible = false;
         return;
     }
 
-    // Если бар был виден, но стал невидим — очистим ОДИН раз
     if (!_visible && _wasVisible) {
         clear();
         _wasVisible = false;
@@ -86,7 +92,6 @@ void ButtonBar::update() {
     if (!_visible)
         return;
 
-    // visible == true
     if (_dirty || anyFlashActive() || !_wasVisible) {
         clear();
         draw();
@@ -94,7 +99,6 @@ void ButtonBar::update() {
         _wasVisible = true;
     }
 
-    // уменьшение flash-счётчиков
     if (_flashLeft)  --_flashLeft;
     if (_flashOk)    --_flashOk;
     if (_flashRight) --_flashRight;
@@ -104,17 +108,15 @@ void ButtonBar::update() {
 // ============================================================================
 // Drawing
 // ============================================================================
-
 void ButtonBar::clear() {
     const Theme& th = _themeService.current();
 
-    const int y = _layout.buttonBarY();
     const int h = _layout.buttonBarH();
     if (h <= 0) return;
 
     _tft.fillRect(
         0,
-        y,
+        _layout.buttonBarY(),
         _tft.width(),
         h,
         th.bg
@@ -126,20 +128,18 @@ void ButtonBar::draw() {
     const int y = _layout.buttonBarY();
     const int h = _layout.buttonBarH();
     const int w = _tft.width();
-    if (h <= 0) return;
-
     const int cellW = w / 4;
 
-    drawCell(0 * cellW, y, cellW, h, "LEFT",
+    drawCell(0 * cellW, y, cellW, h, LABEL_LEFT,
              _hasLeft, _hiLeft, _flashLeft);
 
-    drawCell(1 * cellW, y, cellW, h, "OK",
+    drawCell(1 * cellW, y, cellW, h, LABEL_OK,
              _hasOk, _hiOk, _flashOk);
 
-    drawCell(2 * cellW, y, cellW, h, "RIGHT",
+    drawCell(2 * cellW, y, cellW, h, LABEL_RIGHT,
              _hasRight, _hiRight, _flashRight);
 
-    drawCell(3 * cellW, y, cellW, h, "BACK",
+    drawCell(3 * cellW, y, cellW, h, LABEL_BACK,
              _hasBack, _hiBack, _flashBack);
 }
 
@@ -168,15 +168,21 @@ void ButtonBar::drawCell(
 
     if (!label || !*label) return;
 
+    // ЖЁСТКО фиксируем GFX-состояние
+    _tft.setFont(nullptr);
+    _tft.setTextSize(1);
+    _tft.setTextWrap(false);
+    _tft.setTextColor(fg, bg);
+
     int16_t x1, y1;
     uint16_t tw, thh;
-
     _tft.getTextBounds(label, 0, 0, &x1, &y1, &tw, &thh);
 
-    const int textX = x + (w - (int)tw) / 2;
-    const int baselineY = y + (h / 2) + (thh / 2) - y1;
+static constexpr int BASELINE_SHIFT = 7;
+static constexpr int BASELINE_LEFT = 5;
+    const int textX = x-BASELINE_LEFT+ (w - (int)tw) / 2;
+    const int baselineY = y + (h / 2) + (thh / 2) - y1 - BASELINE_SHIFT;
 
     _tft.setCursor(textX, baselineY);
-    _tft.setTextColor(fg);
     _tft.print(label);
 }

@@ -104,6 +104,10 @@ void ScreenManager::set(Screen& screen) {
 
     applyLayout();
     _current->begin();
+// 🔑 При смене экрана ButtonBar обязан перерисоваться
+if (_buttonBar) {
+    _buttonBar->markDirty();
+}
 
     if (wantStatus) {
         _statusBar->markDirty();
@@ -157,16 +161,20 @@ void ScreenManager::update() {
     }
 
     // ===== ButtonBar (визуальные кнопки) =====
+// 1️⃣ СНАЧАЛА экран рисует СВОЙ контент
+_current->update();
+
+// 2️⃣ Потом системные разделители
+_sepStatus->update();
+_sepBottom->update();
+
+// 3️⃣ ПОСЛЕДНИМ — ButtonBar (он фиксирует GFX-состояние)
 if (_buttonBar) {
-    _buttonBar->setVisible(wantButtons);   // 🔥 КЛЮЧЕВО
+    _buttonBar->setVisible(wantButtons);
     if (wantButtons) {
         _buttonBar->update();
     }
 }
-    _sepStatus->update();
-    _sepBottom->update();
-
-    _current->update();
 
 }
 
