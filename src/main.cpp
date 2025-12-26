@@ -29,7 +29,7 @@
 
 // ================= UI =================
 #include "ui/StatusBar.h"
-#include "ui/BottomBar.h"
+//#include "ui/BottomBar.h"
 #include "ui/UiSeparator.h"
 
 // ================= SCREENS =================
@@ -118,12 +118,13 @@ StatusBar statusBar(
     themeService,
     timeService
 );
-
+/*
 BottomBar bottomBar(
     tft,
     layout,
     themeService
 );
+*/
 ButtonBar buttonBar(
     tft,
     themeService,
@@ -179,7 +180,7 @@ ScreenManager screenManager(
     tft,
     clockScreen,
     statusBar,
-    bottomBar,
+    //bottomBar,
     buttonBar,
     layout,
     sepStatus,

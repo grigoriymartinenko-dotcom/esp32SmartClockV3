@@ -4,7 +4,7 @@
 
 #include "core/Screen.h"
 #include "ui/StatusBar.h"
-#include "ui/BottomBar.h"   // legacy, не используется
+//#include "ui/BottomBar.h"   // legacy, не используется
 #include "ui/ButtonBar.h"
 #include "ui/UiSeparator.h"
 #include "ui/UiDebugOverlay.h"
@@ -18,7 +18,8 @@ public:
         Adafruit_ST7735& tft,
         Screen& initial,
         StatusBar& statusBar,
-        BottomBar& bottomBar,
+        // BottomBar legacy — не используется
+        // , _bottomBar(&bottomBar)
         ButtonBar& buttonBar,          // 🔥 ДОБАВЛЕНО
         LayoutService& layout,
         UiSeparator& sepStatus,
@@ -48,7 +49,7 @@ private:
     uint32_t _lastScreenVer = 0;
 
     StatusBar*        _statusBar;
-    BottomBar*        _bottomBar;   // legacy
+    //BottomBar*        _bottomBar;   // legacy
     ButtonBar*        _buttonBar;   // 🔥 ТЕПЕРЬ РЕАЛЬНО ИСПОЛЬЗУЕТСЯ
     LayoutService*    _layout;
     UiSeparator*      _sepStatus;

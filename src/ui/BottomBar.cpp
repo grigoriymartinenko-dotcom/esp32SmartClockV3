@@ -73,25 +73,10 @@ void BottomBar::markDirty() {
 // update
 // ============================================================================
 void BottomBar::update() {
-
-    bool anyFlash = false;
-    for (auto& b : _buttons) {
-        if (b.flash > 0) {
-            b.flash--;
-            anyFlash = true;
-        }
-    }
-
-    if (!_visible) {
-        if (_dirty) clear();
-        _dirty = false;
-        return;
-    }
-
-    if (_dirty || anyFlash) {
-        draw();
-        _dirty = false;
-    }
+    // LEGACY: BottomBar больше не используется.
+    // Вся нижняя зона принадлежит ButtonBar.
+    // Этот класс оставлен ТОЛЬКО для совместимости.
+    return;
 }
 
 // ============================================================================

@@ -7,7 +7,7 @@ ScreenManager::ScreenManager(
     Adafruit_ST7735& tft,
     Screen& initial,
     StatusBar& statusBar,
-    BottomBar& bottomBar,
+    //BottomBar& bottomBar,
     ButtonBar& buttonBar,          // 🔥 ДОБАВЛЕНО
     LayoutService& layout,
     UiSeparator& sepStatus,
@@ -19,7 +19,7 @@ ScreenManager::ScreenManager(
     , _current(&initial)
     , _prev(nullptr)
     , _statusBar(&statusBar)
-    , _bottomBar(&bottomBar)
+    //, _bottomBar(&bottomBar)
     , _buttonBar(&buttonBar)       // 🔥 КЛЮЧЕВОЕ МЕСТО
     , _layout(&layout)
     , _sepStatus(&sepStatus)
@@ -83,7 +83,8 @@ void ScreenManager::begin() {
         clearStatusArea();
     }
 
-    _bottomBar->setVisible(true);
+    // BottomBar — legacy, больше не используется
+//_bottomBar->setVisible(false);
 
     _lastTimeVer   = _uiVersion->version(UiChannel::TIME);
     _lastThemeVer  = _uiVersion->version(UiChannel::THEME);
@@ -110,7 +111,8 @@ void ScreenManager::set(Screen& screen) {
         clearStatusArea();
     }
 
-    _bottomBar->setVisible(false);
+    // BottomBar — legacy, всегда выключен
+//_bottomBar->setVisible(false);
     _lastScreenVer = _uiVersion->version(UiChannel::SCREEN);
 }
 
