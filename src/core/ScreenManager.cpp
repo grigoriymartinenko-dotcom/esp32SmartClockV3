@@ -128,7 +128,7 @@ void ScreenManager::update() {
     _layout->setHasStatusBar(wantStatus);
     _layout->setHasBottomBar(wantButtons);
 
-    applyLayout();
+    //applyLayout();
 
     if (wantStatus) {
         uint32_t v;

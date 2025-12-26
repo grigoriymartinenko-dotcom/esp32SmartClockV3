@@ -12,12 +12,7 @@ LayoutService::LayoutService(Adafruit_ST7735& tft)
 // lifecycle
 // ============================================================================
 void LayoutService::begin() {
-    // БАЗОВАЯ геометрия UI.
-    // По умолчанию:
-    //  - StatusBar включён
-    //  - ButtonBar (нижняя зона) выключен
-    //
-    // Конкретный экран управляет этим через ScreenManager
+    // БАЗОВАЯ геометрия UI
     _hasStatusBar = true;
     _hasBottomBar = false;
 }
@@ -71,4 +66,61 @@ int LayoutService::contentY() const {
 
 int LayoutService::bottomBarY() const {
     return _tft.height() - bottomBarH();
+}
+
+// ============================================================================
+// HEADER
+// ============================================================================
+int LayoutService::headerY() const {
+    return contentY();
+}
+
+int LayoutService::headerHeight() const {
+    return HEADER_HEIGHT;
+}
+
+int LayoutService::headerTextY() const {
+    return headerY() + HEADER_TEXT_PAD_Y;
+}
+
+// ============================================================================
+// PADDING
+// ============================================================================
+int LayoutService::padL() const { return PAD_L; }
+int LayoutService::padR() const { return PAD_R; }
+int LayoutService::padT() const { return PAD_T; }
+int LayoutService::padB() const { return PAD_B; }
+
+// ============================================================================
+// CONTENT BOUNDS
+// ============================================================================
+int LayoutService::contentLeft() const {
+    return padL();
+}
+
+int LayoutService::contentRight() const {
+    return _tft.width() - padR();
+}
+
+int LayoutService::contentW() const {
+    return contentRight() - contentLeft();
+}
+
+// ============================================================================
+// CONTENT FLOW
+// ============================================================================
+int LayoutService::contentTopY() const {
+    // Контент начинается ПОСЛЕ header + padding
+    return headerY() + headerHeight() + padT();
+}
+
+int LayoutService::contentBottomY() const {
+    return bottomBarY() - padB();
+}
+
+// ============================================================================
+// TEXT METRICS
+// ============================================================================
+int LayoutService::lineH() const {
+    return LINE_HEIGHT;
 }

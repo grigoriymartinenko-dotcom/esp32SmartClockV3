@@ -27,6 +27,10 @@ public:
     virtual void begin() = 0;
     virtual void update() = 0;
 
+    // ===== Header =====
+    // nullptr => заголовка нет (экран без заголовка)
+    virtual const char* headerTitle() const { return nullptr; }
+
     // есть ли статусбар на этом экране
     virtual bool hasStatusBar() const { return true; }
 
