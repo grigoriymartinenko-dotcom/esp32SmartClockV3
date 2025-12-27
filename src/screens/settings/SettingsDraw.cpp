@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+extern PreferencesService prefs;
+
 /*
  * SettingsDraw.cpp
  * ----------------
@@ -148,10 +150,14 @@ void SettingsScreen::drawWifiList() {
     }
 
     int rowH = 16;
-    int y    = listTop;
 
     const int netCount  = _wifi.networksCount();
     const int rescanIdx = netCount;
+
+    const char* connectedSsid =
+        (_wifi.state() == WifiService::State::ONLINE)
+            ? prefs.wifiSsid()
+            : nullptr;
 
     // ---------------- No networks ----------------
     if ((scan == WifiService::ScanState::DONE ||
@@ -159,7 +165,7 @@ void SettingsScreen::drawWifiList() {
 
         bool sel = (_wifiListSelected == 0);
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-        _tft.setCursor(8, y + 4);
+        _tft.setCursor(8, listTop + 4);
         _tft.print(sel ? "> " : "  ");
         _tft.print("|-----Rescan-----|");
         return;
@@ -168,18 +174,28 @@ void SettingsScreen::drawWifiList() {
     constexpr int VISIBLE_ROWS = 4;
 
     for (int i = 0; i < VISIBLE_ROWS; i++) {
+
         int idx = _wifiListTop + i;
         if (idx >= netCount) break;
 
         int rowY = listTop + i * rowH;
         bool sel = (idx == _wifiListSelected);
 
+        const char* ssid = _wifi.ssidAt(idx);
+
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(8, rowY + 4);
         _tft.print(sel ? "> " : "  ");
-        _tft.print(_wifi.ssidAt(idx));
+        _tft.print(ssid ? ssid : "<?>");
+
+        // ---- connected marker ----
+        if (ssid && connectedSsid && strcmp(ssid, connectedSsid) == 0) {
+            _tft.setTextColor(th.textSecondary, th.bg);
+            _tft.print(" [connected]");
+        }
     }
 
+    // ---------------- Rescan ----------------
     int rowY = listTop + VISIBLE_ROWS * rowH;
     bool sel = (_wifiListSelected == rescanIdx);
 
