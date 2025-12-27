@@ -24,7 +24,12 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
 // ============================================================================
 // Wi-Fi RSSI bars (UI responsibility)
 // ============================================================================
-static int rssiToBars(int rssi) {
+// Contract notes:
+// - rssi is dBm: -90..-30 typically
+// - RSSI_UNKNOWN (INT16_MIN) => show 0 bars
+static uint8_t rssiToBars(int16_t rssi) {
+    if (rssi == WifiService::RSSI_UNKNOWN) return 0;
+
     if (rssi >= -55) return 4;
     if (rssi >= -65) return 3;
     if (rssi >= -75) return 2;
@@ -37,20 +42,20 @@ static void drawRssiBars(
     const Theme& th,
     int x,
     int yMid,
-    int rssi
+    int16_t rssi
 ) {
     const int bw   = 2;
     const int gap  = 1;
     const int bars = 4;
 
-    int filled = rssiToBars(rssi);
+    const uint8_t filled = rssiToBars(rssi);
 
     for (int i = 0; i < bars; i++) {
         int barH = 2 + i * 2;
         int bx   = x + i * (bw + gap);
         int by   = yMid - barH;
 
-        uint16_t col = (i < filled) ? th.textPrimary : th.muted;
+        uint16_t col = (i < (int)filled) ? th.textPrimary : th.muted;
         tft.fillRect(bx, by, bw, barH, col);
     }
 }
