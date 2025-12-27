@@ -18,7 +18,7 @@ SettingsScreen::SettingsScreen(
     TimeService& timeService,
     WifiService& wifiService,
     UiVersionService& uiVersion,
-    ButtonBar& buttonBar              // 🔥 ДОБАВИТЬ
+    ButtonBar& buttonBar
 )
     : Screen(themeService)
     , _tft(tft)
@@ -27,9 +27,10 @@ SettingsScreen::SettingsScreen(
     , _time(timeService)
     , _wifi(wifiService)
     , _ui(uiVersion)
-    , _buttons(buttonBar)             // 🔥 ДОБАВИТЬ
+    , _buttons(buttonBar)
 {
 }
+
 // ============================================================================
 // begin
 // ============================================================================
@@ -49,7 +50,13 @@ void SettingsScreen::begin() {
     memset(_wifiPass, 0, sizeof(_wifiPass));
     _wifiPassLen = 0;
     _wifiCharIdx = 0;
-updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
+
+    // 🔥 ВАЖНО: зафиксировать стартовые версии
+    _lastWifiListVersion  = _wifi.listVersion();
+    _lastWifiStateVersion = _wifi.stateVersion();
+
+    updateButtonBarContext();
+
     _dirty = true;
     _needFullClear  = true;
     _lastDrawnLevel = _level;
@@ -62,8 +69,17 @@ updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
 // ============================================================================
 void SettingsScreen::update() {
 
-    if (_ui.changed(UiChannel::WIFI))
+    // ------------------------------------------------------------------------
+    // Wi-Fi CONTRACT:
+    // перерисовываемся ТОЛЬКО если реально что-то изменилось
+    // ------------------------------------------------------------------------
+    if (_wifi.listVersion() != _lastWifiListVersion ||
+        _wifi.stateVersion() != _lastWifiStateVersion) {
+
+        _lastWifiListVersion  = _wifi.listVersion();
+        _lastWifiStateVersion = _wifi.stateVersion();
         _dirty = true;
+    }
 
     if (_hintFlash > 0)
         _hintFlash--;
@@ -83,7 +99,9 @@ void SettingsScreen::onShortLeft() {
 
     if (_level == Level::WIFI_PASSWORD) {
         const size_t n = strlen(PASS_CHARS);
-        _wifiCharIdx = (_wifiCharIdx == 0) ? (int)(n - 1) : (_wifiCharIdx - 1);
+        _wifiCharIdx = (_wifiCharIdx == 0)
+            ? (int)(n - 1)
+            : (_wifiCharIdx - 1);
         _dirty = true;
         return;
     }
@@ -165,10 +183,6 @@ void SettingsScreen::onThemeChanged() {
 }
 
 // ============================================================================
-// NAVIGATION
-// ============================================================================
-
-// ============================================================================
 // SUBMENU
 // ============================================================================
 void SettingsScreen::enterSubmenu(Level lvl) {
@@ -183,6 +197,10 @@ void SettingsScreen::enterSubmenu(Level lvl) {
 void SettingsScreen::exitSubmenu(bool /*apply*/) {
     enterSubmenu(Level::ROOT);
 }
+
+// ============================================================================
+// BUTTON BAR
+// ============================================================================
 void SettingsScreen::updateButtonBarContext() {
 
     if (_mode == UiMode::NAV) {

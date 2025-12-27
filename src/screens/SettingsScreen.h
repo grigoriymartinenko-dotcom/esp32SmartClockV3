@@ -183,4 +183,10 @@ private:
     // ===== WIFI =====
     bool _tmpWifiOn = true;
     bool _bakWifiOn = true;
+// =====================================================================
+    // 🔥 Wi-Fi CONTRACT CACHE (ОБЯЗАТЕЛЬНО)
+    // =====================================================================
+    uint32_t _lastWifiListVersion  = 0;
+    uint32_t _lastWifiStateVersion = 0;
+
 };

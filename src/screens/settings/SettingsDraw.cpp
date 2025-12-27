@@ -1,11 +1,8 @@
 #include "screens/SettingsScreen.h"
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
-#include <WiFi.h>
 #include <stdio.h>
 #include <string.h>
-
-extern PreferencesService prefs;
 
 /*
  * SettingsDraw.cpp
@@ -25,7 +22,7 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
 }
 
 // ============================================================================
-// Wi-Fi RSSI bars (ESP32-safe)
+// Wi-Fi RSSI bars (UI responsibility)
 // ============================================================================
 static int rssiToBars(int rssi) {
     if (rssi >= -55) return 4;
@@ -45,14 +42,13 @@ static void drawRssiBars(
     const int bw   = 2;
     const int gap  = 1;
     const int bars = 4;
-    const int h    = 10;
 
     int filled = rssiToBars(rssi);
 
     for (int i = 0; i < bars; i++) {
-        int barH = 2 + i * 2;          // 2,4,6,8
+        int barH = 2 + i * 2;
         int bx   = x + i * (bw + gap);
-        int by   = yMid + h / 2 - barH;
+        int by   = yMid - barH;
 
         uint16_t col = (i < filled) ? th.textPrimary : th.muted;
         tft.fillRect(bx, by, bw, barH, col);
@@ -88,7 +84,6 @@ void SettingsScreen::redrawAll() {
 // ROOT
 // ============================================================================
 void SettingsScreen::drawRoot() {
-
     const Theme& th = theme();
 
     _tft.setTextSize(2);
@@ -105,11 +100,9 @@ void SettingsScreen::drawRoot() {
 
     for (int i = 0; i < count; i++) {
         int y = top + i * rowH;
-
-        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
-
         bool sel = (i == _selected);
 
+        _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(12, y + 4);
         _tft.print(sel ? "> " : "  ");
@@ -121,7 +114,6 @@ void SettingsScreen::drawRoot() {
 // WIFI MENU
 // ============================================================================
 void SettingsScreen::drawWifi() {
-
     const Theme& th = theme();
 
     _tft.setTextSize(2);
@@ -139,17 +131,12 @@ void SettingsScreen::drawWifi() {
         bool sel = (_subSelected == i);
 
         _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
-
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(12, y + 4);
         _tft.print(sel ? "> " : "  ");
 
         if (i == 0) {
             _tft.print("State: ");
-            _tft.setTextColor(
-                (sel && _mode == UiMode::EDIT) ? th.warn : th.textPrimary,
-                th.bg
-            );
             _tft.print(_tmpWifiOn ? "ON" : "OFF");
         } else {
             _tft.print("Scan");
@@ -158,14 +145,16 @@ void SettingsScreen::drawWifi() {
 }
 
 // ============================================================================
-// WIFI LIST
+// WIFI LIST — ИСПРАВЛЕННЫЙ ПО КОНТРАКТУ
 // ============================================================================
 void SettingsScreen::drawWifiList() {
 
     const Theme& th = theme();
 
     int listTop = 36;
+    int rowH    = 16;
     int listH   = _layout.buttonBarY() - listTop;
+
     _tft.fillRect(0, listTop, _tft.width(), listH, th.bg);
 
     _tft.setTextSize(2);
@@ -175,72 +164,44 @@ void SettingsScreen::drawWifiList() {
 
     _tft.setTextSize(1);
 
-    const WifiService::ScanState scan = _wifi.scanState();
-
-    if (scan == WifiService::ScanState::SCANNING) {
+    if (_wifi.scanState() == WifiService::ScanState::SCANNING) {
         _tft.setCursor(20, 50);
         _tft.setTextColor(th.muted, th.bg);
         _tft.print("Scanning...");
         return;
     }
 
-    int rowH = 16;
-
-    const int netCount  = _wifi.networksCount();
-    const int rescanIdx = netCount;
-
-    const char* connectedSsid =
-        (_wifi.state() == WifiService::State::ONLINE)
-            ? prefs.wifiSsid()
-            : nullptr;
-
-    if ((scan == WifiService::ScanState::DONE ||
-         scan == WifiService::ScanState::FAILED) && netCount == 0) {
-
-        bool sel = (_wifiListSelected == 0);
-        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-        _tft.setCursor(8, listTop + 4);
-        _tft.print(sel ? "> " : "  ");
-        _tft.print("|-----Rescan-----|");
-        return;
-    }
-
     constexpr int VISIBLE_ROWS = 4;
     constexpr int ICON_W = 12;
 
-    for (int i = 0; i < VISIBLE_ROWS; i++) {
+    int netCount = _wifi.networksCount();
 
+    for (int i = 0; i < VISIBLE_ROWS; i++) {
         int idx = _wifiListTop + i;
         if (idx >= netCount) break;
+
+        const WifiService::Network& net = _wifi.networkAt(idx);
 
         int rowY = listTop + i * rowH;
         bool sel = (idx == _wifiListSelected);
 
-        const char* ssid = _wifi.ssidAt(idx);
-
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
         _tft.setCursor(8, rowY + 4);
         _tft.print(sel ? "> " : "  ");
-        _tft.print(ssid ? ssid : "<?>");
-
-        // RSSI — ТОЛЬКО для подключённой сети (ESP32 limitation)
-        int rssi = -100;
-        if (ssid && connectedSsid && strcmp(ssid, connectedSsid) == 0) {
-            rssi = WiFi.RSSI();
-        }
+        _tft.print(net.ssid);
 
         int iconX = _tft.width() - ICON_W - 2;
         int yMid  = rowY + rowH / 2;
-        drawRssiBars(_tft, th, iconX, yMid, rssi);
+        drawRssiBars(_tft, th, iconX, yMid, net.rssi);
 
-        if (ssid && connectedSsid && strcmp(ssid, connectedSsid) == 0) {
+        if (net.connected) {
             _tft.setTextColor(th.textSecondary, th.bg);
             _tft.print(" [connected]");
         }
     }
 
     int rowY = listTop + VISIBLE_ROWS * rowH;
-    bool sel = (_wifiListSelected == rescanIdx);
+    bool sel = (_wifiListSelected == netCount);
 
     _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
     _tft.setCursor(8, rowY + 4);
@@ -252,7 +213,6 @@ void SettingsScreen::drawWifiList() {
 // WIFI PASSWORD
 // ============================================================================
 void SettingsScreen::drawWifiPassword() {
-
     const Theme& th = theme();
     int h = _layout.buttonBarY();
 
@@ -302,4 +262,4 @@ void SettingsScreen::drawTimezone() {
     _tft.setCursor(18, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Timezone");
-}git status
+}
