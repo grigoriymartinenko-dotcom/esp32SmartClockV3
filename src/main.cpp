@@ -22,14 +22,13 @@
 #include "services/ConnectivityService.h"
 #include "services/RtcService.h"
 #include "services/PreferencesService.h"
-#include "services/WifiService.h"          // 🔹 WIFI
+#include "services/WifiService.h"
 
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
 
 // ================= UI =================
 #include "ui/StatusBar.h"
-//#include "ui/BottomBar.h"
 #include "ui/UiSeparator.h"
 
 // ================= SCREENS =================
@@ -72,10 +71,12 @@ Buttons buttons(
     50,
     800
 );
+
 // =====================================================
 // LAYOUT
 // =====================================================
 LayoutService layout(tft);
+
 // =====================================================
 // UI VERSION
 // =====================================================
@@ -90,7 +91,7 @@ NightService nightService(uiVersion);
 
 PreferencesService prefs;
 
-// 🔹 WIFI SERVICE (ВАЖНО: ДО StatusBar и SettingsScreen)
+// ===== WIFI =====
 WifiService wifi(
     uiVersion,
     prefs
@@ -109,32 +110,26 @@ RtcService rtc(
     RTC_RST
 );
 
-
 // =====================================================
 // UI ELEMENTS
 // =====================================================
 StatusBar statusBar(
     tft,
     themeService,
-    timeService
+    timeService,
+    wifi          // 🔹 ДОБАВЛЕНО
 );
-/*
-BottomBar bottomBar(
-    tft,
-    layout,
-    themeService
-);
-*/
+
 ButtonBar buttonBar(
     tft,
     themeService,
     layout
 );
+
 // =====================================================
-// CONNECTIVITY
+// CONNECTIVITY (БЕЗ UI)
 // =====================================================
 ConnectivityService connectivity(
-    statusBar,
     timeService
 );
 
@@ -156,6 +151,7 @@ ClockScreen clockScreen(
     uiVersion,
     dht
 );
+
 ForecastScreen forecastScreen(
     tft,
     themeService,
@@ -169,9 +165,9 @@ SettingsScreen settingsScreen(
     layout,
     nightService,
     timeService,
-    wifi,          // 🔹 ОБЯЗАТЕЛЬНО
+    wifi,
     uiVersion,
-    buttonBar          // 🔥 ДОБАВИТЬ
+    buttonBar
 );
 
 // =====================================================
@@ -181,7 +177,6 @@ ScreenManager screenManager(
     tft,
     clockScreen,
     statusBar,
-    //bottomBar,
     buttonBar,
     layout,
     sepStatus,
@@ -232,7 +227,7 @@ void setup() {
     }
 
     timeService.begin();
-    wifi.begin();              // 🔹 WIFI
+    wifi.begin();
     connectivity.begin();
 
     layout.begin();
@@ -250,7 +245,7 @@ void loop() {
 
     timeService.update();
     nightService.update(timeService);
-    wifi.update();             // 🔹 WIFI
+    wifi.update();
     dht.update();
     connectivity.update();
 

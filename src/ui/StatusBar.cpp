@@ -1,22 +1,16 @@
 #include "ui/StatusBar.h"
 #include <stdio.h>
 
-/*
- * StatusBar.cpp
- * -------------
- * Двухстрочный статусбар:
- *  строка 1 — WiFi + дата
- *  строка 2 — NTP  + день недели
- */
-
 StatusBar::StatusBar(
     Adafruit_ST7735& tft,
     ThemeService& theme,
-    TimeService& time
+    TimeService& time,
+    WifiService& wifi
 )
 : _tft(tft)
 , _theme(theme)
 , _time(time)
+, _wifi(wifi)
 {}
 
 // --------------------------------------------------
@@ -24,21 +18,39 @@ void StatusBar::markDirty() {
     _dirty = true;
 }
 
-void StatusBar::setWiFiStatus(Status s) {
-    if (_wifi != s) {
-        _wifi = s;
-        markDirty();
+// --------------------------------------------------
+StatusBar::Status StatusBar::mapWifiStatus() const {
+    if (!_wifi.isEnabled())
+        return OFFLINE;
+
+    switch (_wifi.state()) {
+        case WifiService::State::CONNECTING: return CONNECTING;
+        case WifiService::State::ONLINE:     return ONLINE;
+        case WifiService::State::ERROR:      return ERROR;
+        case WifiService::State::OFF:
+        default:                             return OFFLINE;
     }
 }
 
-void StatusBar::setNtpStatus(Status s) {
-    if (_ntp != s) {
-        _ntp = s;
-        markDirty();
-    }
+StatusBar::Status StatusBar::mapTimeStatus() const {
+    if (!_time.isValid())
+        return OFFLINE;
+
+    return ONLINE;
 }
 
+// --------------------------------------------------
 void StatusBar::update() {
+
+    Status newWifi = mapWifiStatus();
+    Status newTime = mapTimeStatus();
+
+    if (newWifi != _wifiSt || newTime != _timeSt) {
+        _wifiSt = newWifi;
+        _timeSt = newTime;
+        _dirty = true;
+    }
+
     if (!_dirty) return;
     _dirty = false;
     draw();
@@ -60,7 +72,7 @@ void StatusBar::draw() {
     const int DOT_X = 4;
 
     // ===== LINE 1: WiFi =====
-    drawDot(DOT_X, Y1 + 4, statusDotColor(_wifi, th));
+    drawDot(DOT_X, Y1 + 4, statusDotColor(_wifiSt, th));
 
     _tft.setTextColor(th.muted, th.bg);
     _tft.setCursor(10, Y1);
@@ -80,7 +92,7 @@ void StatusBar::draw() {
     }
 
     // ===== LINE 2: NTP / RTC =====
-    drawDot(DOT_X, Y2 + 4, statusDotColor(_ntp, th));
+    drawDot(DOT_X, Y2 + 4, statusDotColor(_timeSt, th));
 
     _tft.setTextColor(th.muted, th.bg);
     _tft.setCursor(10, Y2);

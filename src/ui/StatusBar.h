@@ -3,6 +3,7 @@
 
 #include "services/ThemeService.h"
 #include "services/TimeService.h"
+#include "services/WifiService.h"
 
 /*
  * StatusBar
@@ -10,12 +11,13 @@
  * Верхняя статусная панель (2 строки):
  *
  *  ● WiFi        DD.MM.YYYY
- *  ● NTP         weekday
+ *  ● NTP / RTC   weekday
  *
  * ПРАВИЛА:
  *  - НЕТ таймеров
  *  - НЕТ millis()
- *  - Рисует ТОЛЬКО по dirty-флагу
+ *  - НЕТ вызовов из экранов
+ *  - Состояние читается ТОЛЬКО из сервисов
  */
 class StatusBar {
 public:
@@ -31,32 +33,32 @@ public:
     StatusBar(
         Adafruit_ST7735& tft,
         ThemeService& theme,
-        TimeService& time
+        TimeService& time,
+        WifiService& wifi
     );
 
     void update();
     void markDirty();
 
-    void setWiFiStatus(Status s);
-    void setNtpStatus(Status s);
-
 private:
     void draw();
 
-    // helpers
+    Status mapWifiStatus() const;
+    Status mapTimeStatus() const;
+
     uint16_t statusDotColor(Status s, const Theme& th) const;
     const char* weekdayUaLatFromTm(const tm& t) const;
 
-    // 🔹 НОВОЕ: рисование индикатора
     void drawDot(int cx, int cy, uint16_t color);
 
 private:
     Adafruit_ST7735& _tft;
     ThemeService&    _theme;
     TimeService&     _time;
+    WifiService&     _wifi;
 
-    Status _wifi = OFFLINE;
-    Status _ntp  = OFFLINE;
+    Status _wifiSt = OFFLINE;
+    Status _timeSt = OFFLINE;
 
     bool _dirty = true;
 };

@@ -9,7 +9,35 @@
  * ----------------
  * ВСЯ отрисовка экрана Settings.
  * НИКАКОЙ логики, ТОЛЬКО визуал.
+ *
+ * КЛЮЧЕВОЙ ФИКС:
+ * --------------
+ * Adafruit_GFX хранит состояние текста ГЛОБАЛЬНО:
+ *   - font
+ *   - textSize
+ *   - textWrap
+ *
+ * Если не сбрасывать это состояние ПЕРЕД КАЖДЫМ логическим блоком,
+ * возникают:
+ *   - налезание строк
+ *   - переносы
+ *   - "прыгающая" геометрия
+ *
+ * Поэтому здесь:
+ *   - ЖЁСТКИЙ reset GFX состояния:
+ *       setFont(nullptr)
+ *       setTextWrap(false)
+ *       setTextSize(1)
+ *   - reset делается:
+ *       * в redrawAll()
+ *       * в начале drawWifiList()
+ *       * внутри drawRow() ПЕРЕД ЛЮБЫМ print()
  */
+
+// ============================================================================
+// layout constants (НЕ тянем StatusBar.h)
+// ============================================================================
+static constexpr int STATUSBAR_H = 24;
 
 // ============================================================================
 // helpers
@@ -24,12 +52,8 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
 // ============================================================================
 // Wi-Fi RSSI bars (UI responsibility)
 // ============================================================================
-// Contract notes:
-// - rssi is dBm: -90..-30 typically
-// - RSSI_UNKNOWN (INT16_MIN) => show 0 bars
 static uint8_t rssiToBars(int16_t rssi) {
     if (rssi == WifiService::RSSI_UNKNOWN) return 0;
-
     if (rssi >= -55) return 4;
     if (rssi >= -65) return 3;
     if (rssi >= -75) return 2;
@@ -48,14 +72,13 @@ static void drawRssiBars(
     const int gap  = 1;
     const int bars = 4;
 
-    const uint8_t filled = rssiToBars(rssi);
+    uint8_t filled = rssiToBars(rssi);
 
     for (int i = 0; i < bars; i++) {
         int barH = 2 + i * 2;
         int bx   = x + i * (bw + gap);
         int by   = yMid - barH;
-
-        uint16_t col = (i < (int)filled) ? th.textPrimary : th.muted;
+        uint16_t col = (i < filled) ? th.textPrimary : th.muted;
         tft.fillRect(bx, by, bw, barH, col);
     }
 }
@@ -66,12 +89,27 @@ static void drawRssiBars(
 void SettingsScreen::redrawAll() {
 
     const Theme& th = theme();
-    int h = _layout.buttonBarY();
+    const int y0 = STATUSBAR_H;
 
+    // ------------------------------------------------------------------------
+    // 🔒 ГЛОБАЛЬНЫЙ RESET GFX СОСТОЯНИЯ (обязателен)
+    // ------------------------------------------------------------------------
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
+    _tft.setTextSize(1);
+
+    // ------------------------------------------------------------------------
+    // Полный клир рабочей области
+    // ------------------------------------------------------------------------
     if (_needFullClear || _lastDrawnLevel != _level) {
-        _tft.fillRect(0, 0, _tft.width(), h, th.bg);
+        _tft.fillRect(0, y0, _tft.width(), _tft.height() - y0, th.bg);
         _needFullClear  = false;
         _lastDrawnLevel = _level;
+
+        // сброс кешей Wi-Fi списка
+        _lastWifiListTop      = -1;
+        _lastWifiListSelected = -1;
+        _lastWifiNetCount     = -1;
     }
 
     switch (_level) {
@@ -90,18 +128,23 @@ void SettingsScreen::redrawAll() {
 // ============================================================================
 void SettingsScreen::drawRoot() {
     const Theme& th = theme();
+    const int y0 = STATUSBAR_H;
 
+    // --- TITLE ---
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
     _tft.setTextSize(2);
-    _tft.setCursor(20, 10);
+    _tft.setCursor(20, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("SETTINGS");
 
+    // --- LIST ---
     _tft.setTextSize(1);
 
-    int top    = 36;
+    int top    = y0 + 28;
     int bottom = _layout.buttonBarY();
     int count  = sizeof(MENU) / sizeof(MENU[0]);
-    int rowH   = (bottom - top) / count;
+    constexpr int rowH = 12;
 
     for (int i = 0; i < count; i++) {
         int y = top + i * rowH;
@@ -109,7 +152,8 @@ void SettingsScreen::drawRoot() {
 
         _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-        _tft.setCursor(12, y + 4);
+        const int textY = y + (rowH - 8) / 2;
+        _tft.setCursor(12, textY);
         _tft.print(sel ? "> " : "  ");
         _tft.print(MENU[i].label);
     }
@@ -120,15 +164,20 @@ void SettingsScreen::drawRoot() {
 // ============================================================================
 void SettingsScreen::drawWifi() {
     const Theme& th = theme();
+    const int y0 = STATUSBAR_H;
 
+    // --- TITLE ---
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
     _tft.setTextSize(2);
-    _tft.setCursor(34, 10);
+    _tft.setCursor(34, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Wi-Fi");
 
+    // --- LIST ---
     _tft.setTextSize(1);
 
-    int top  = 40;
+    int top  = y0 + 28;
     int rowH = 18;
 
     for (int i = 0; i < 2; i++) {
@@ -137,7 +186,8 @@ void SettingsScreen::drawWifi() {
 
         _tft.fillRect(0, y, _tft.width(), rowH, th.bg);
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-        _tft.setCursor(12, y + 4);
+        const int textY = y + (rowH - 8) / 2;
+        _tft.setCursor(12, textY);
         _tft.print(sel ? "> " : "  ");
 
         if (i == 0) {
@@ -150,68 +200,104 @@ void SettingsScreen::drawWifi() {
 }
 
 // ============================================================================
-// WIFI LIST — ИСПРАВЛЕННЫЙ ПО КОНТРАКТУ
+// WIFI LIST — PARTIAL REDRAW (ANTI-FLICKER)
 // ============================================================================
 void SettingsScreen::drawWifiList() {
 
     const Theme& th = theme();
 
-    int listTop = 36;
-    int rowH    = 16;
-    int listH   = _layout.buttonBarY() - listTop;
-
-    _tft.fillRect(0, listTop, _tft.width(), listH, th.bg);
-
-    _tft.setTextSize(2);
-    _tft.setCursor(18, 10);
-    _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.print("Wi-Fi scan");
-
-    _tft.setTextSize(1);
-
-    if (_wifi.scanState() == WifiService::ScanState::SCANNING) {
-        _tft.setCursor(20, 50);
-        _tft.setTextColor(th.muted, th.bg);
-        _tft.print("Scanning...");
-        return;
-    }
-
+    constexpr int ROW_H = 12;
     constexpr int VISIBLE_ROWS = 4;
     constexpr int ICON_W = 12;
 
+    const int y0 = STATUSBAR_H;
+    const int TITLE_Y  = y0 + 6;
+    const int LIST_TOP = y0 + 28;
+
+    // ------------------------------------------------------------------------
+    // 🔒 RESET ПЕРЕД СПИСКОМ (обязательно)
+    // ------------------------------------------------------------------------
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
+    _tft.setTextSize(1);
+
     int netCount = _wifi.networksCount();
 
-    for (int i = 0; i < VISIBLE_ROWS; i++) {
-        int idx = _wifiListTop + i;
-        if (idx >= netCount) break;
+    bool full =
+        _lastWifiListTop  != _wifiListTop ||
+        _lastWifiNetCount != netCount ||
+        _lastWifiListTop  < 0;
+
+    // --- HEADER ---
+    _tft.fillRect(0, y0, _tft.width(), LIST_TOP - y0, th.bg);
+    _tft.setTextSize(2);
+    _tft.setCursor(18, TITLE_Y);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Wi-Fi scan");
+
+    // ⚠️ ОБЯЗАТЕЛЬНЫЙ возврат!
+    _tft.setTextSize(1);
+
+    if (full) {
+        int listH = _layout.buttonBarY() - LIST_TOP;
+        _tft.fillRect(0, LIST_TOP, _tft.width(), listH, th.bg);
+    }
+
+    if (_wifi.scanState() == WifiService::ScanState::SCANNING) {
+        if (full) {
+            _tft.setCursor(20, LIST_TOP + 14);
+            _tft.setTextColor(th.muted, th.bg);
+            _tft.print("Scanning...");
+        }
+        return;
+    }
+
+    // --- ROW DRAW ---
+    auto drawRow = [&](int idx) {
+
+        // 🔒 САМЫЙ ВАЖНЫЙ FIX — reset ПЕРЕД КАЖДОЙ строкой
+        _tft.setFont(nullptr);
+        _tft.setTextWrap(false);
+        _tft.setTextSize(1);
+
+        if (idx < _wifiListTop || idx >= _wifiListTop + VISIBLE_ROWS) return;
+        if (idx >= netCount) return;
+
+        int i = idx - _wifiListTop;
+        int rowY = LIST_TOP + i * ROW_H;
+
+        _tft.fillRect(0, rowY, _tft.width(), ROW_H, th.bg);
 
         const WifiService::Network& net = _wifi.networkAt(idx);
-
-        int rowY = listTop + i * rowH;
         bool sel = (idx == _wifiListSelected);
 
         _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-        _tft.setCursor(8, rowY + 4);
+        const int textY = rowY + (ROW_H - 8) / 2;
+        _tft.setCursor(8, textY);
         _tft.print(sel ? "> " : "  ");
         _tft.print(net.ssid);
 
         int iconX = _tft.width() - ICON_W - 2;
-        int yMid  = rowY + rowH / 2;
+        int yMid  = rowY + ROW_H / 2;
         drawRssiBars(_tft, th, iconX, yMid, net.rssi);
 
         if (net.connected) {
             _tft.setTextColor(th.textSecondary, th.bg);
             _tft.print(" [connected]");
         }
+    };
+
+    if (full) {
+        for (int i = 0; i < VISIBLE_ROWS; i++)
+            drawRow(_wifiListTop + i);
+    } else if (_lastWifiListSelected != _wifiListSelected) {
+        drawRow(_lastWifiListSelected);
+        drawRow(_wifiListSelected);
     }
 
-    int rowY = listTop + VISIBLE_ROWS * rowH;
-    bool sel = (_wifiListSelected == netCount);
-
-    _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-    _tft.setCursor(8, rowY + 4);
-    _tft.print(sel ? "> " : "  ");
-    _tft.print("|-----Rescan-----|");
+    _lastWifiListTop      = _wifiListTop;
+    _lastWifiListSelected = _wifiListSelected;
+    _lastWifiNetCount     = netCount;
 }
 
 // ============================================================================
@@ -219,25 +305,29 @@ void SettingsScreen::drawWifiList() {
 // ============================================================================
 void SettingsScreen::drawWifiPassword() {
     const Theme& th = theme();
-    int h = _layout.buttonBarY();
+    const int y0 = STATUSBAR_H;
+    const int h  = _layout.buttonBarY();
 
-    _tft.fillRect(0, 0, _tft.width(), h, th.bg);
+    _tft.fillRect(0, y0, _tft.width(), h - y0, th.bg);
+
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
 
     _tft.setTextSize(2);
-    _tft.setCursor(10, 10);
+    _tft.setCursor(10, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Wi-Fi pass");
 
     _tft.setTextSize(1);
 
-    _tft.setCursor(10, 40);
+    _tft.setCursor(10, y0 + 36);
     _tft.print("Char:");
-    _tft.setCursor(60, 40);
+    _tft.setCursor(60, y0 + 36);
     _tft.setTextColor(th.select, th.bg);
     _tft.print(PASS_CHARS[_wifiCharIdx]);
 
     _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(10, 60);
+    _tft.setCursor(10, y0 + 56);
     for (int i = 0; i < _wifiPassLen; i++)
         _tft.print('*');
 }
@@ -247,24 +337,33 @@ void SettingsScreen::drawWifiPassword() {
 // ============================================================================
 void SettingsScreen::drawTime() {
     const Theme& th = theme();
+    const int y0 = STATUSBAR_H;
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
     _tft.setTextSize(2);
-    _tft.setCursor(40, 10);
+    _tft.setCursor(40, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Time");
 }
 
 void SettingsScreen::drawNight() {
     const Theme& th = theme();
+    const int y0 = STATUSBAR_H;
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
     _tft.setTextSize(2);
-    _tft.setCursor(24, 10);
+    _tft.setCursor(24, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Night mode");
 }
 
 void SettingsScreen::drawTimezone() {
     const Theme& th = theme();
+    const int y0 = STATUSBAR_H;
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
     _tft.setTextSize(2);
-    _tft.setCursor(18, 10);
+    _tft.setCursor(18, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Timezone");
 }

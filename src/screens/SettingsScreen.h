@@ -13,16 +13,6 @@
 
 #include "screens/settings/SettingsTypes.h"
 
-/*
- * SettingsScreen
- * --------------
- * Экран настроек устройства.
- *
- * Контекст ButtonBar:
- *  NAV  : <  OK  >  BACK
- *  EDIT : -  OK+ +  BACK+
- */
-
 class SettingsScreen : public Screen {
 public:
     SettingsScreen(
@@ -33,19 +23,17 @@ public:
         TimeService& timeService,
         WifiService& wifiService,
         UiVersionService& uiVersion,
-        ButtonBar& buttonBar          // 🔥 ДОБАВЛЕНО
+        ButtonBar& buttonBar
     );
 
-    // ===== Screen =====
     void begin() override;
     void update() override;
 
-    bool hasStatusBar() const override { return false; }
+    bool hasStatusBar() const override { return true; }
     bool hasButtonBar() const override { return true; }
 
     void onThemeChanged() override;
 
-    // ===== Buttons =====
     void onShortLeft();
     void onShortRight();
     void onShortOk();
@@ -53,12 +41,10 @@ public:
     void onLongOk();
     void onLongBack();
 
-    // ===== Exit =====
     bool exitRequested() const;
     void clearExitRequest();
 
 protected:
-    // ===== DRAW =====
     void redrawAll();
 
     void drawRoot();
@@ -75,31 +61,25 @@ private:
     using HintBtn  = SettingsTypes::HintBtn;
     using MenuItem = SettingsTypes::MenuItem;
 
-    // ===== ButtonBar context =====
-    void updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
+    void updateButtonBarContext();
 
-    // ===== NAVIGATION =====
     void navLeft();
     void navRight();
 
-    // ===== EDIT MODE =====
     void enterEdit();
     void exitEdit(bool apply);
     void editInc();
     void editDec();
 
-    // ===== SUBMENU =====
     void enterSubmenu(Level lvl);
     void exitSubmenu(bool apply);
 
-    // ===== WIFI HANDLERS =====
     bool handleWifiShortOk();
     bool handleWifiShortBack();
     bool handleWifiLongOk();
     bool handleWifiLongBack();
 
 private:
-    // ===== SERVICES =====
     Adafruit_ST7735&  _tft;
     LayoutService&    _layout;
 
@@ -107,24 +87,20 @@ private:
     TimeService&      _time;
     WifiService&      _wifi;
     UiVersionService& _ui;
-    ButtonBar&        _buttons;      // 🔥 ДОБАВЛЕНО
+    ButtonBar&        _buttons;
 
-    // ===== UI STATE =====
     bool   _dirty = true;
     bool   _exitRequested = false;
 
     Level  _level = Level::ROOT;
     UiMode _mode  = UiMode::NAV;
 
-    // ===== ROOT / SUBMENU CURSORS =====
     int _selected    = 0;
     int _subSelected = 0;
 
-    // ===== WIFI LIST =====
     int _wifiListTop      = 0;
     int _wifiListSelected = 0;
 
-    // ===== WIFI PASSWORD =====
     static constexpr int WIFI_PASS_MAX = 32;
     char _wifiPass[WIFI_PASS_MAX + 1]{};
     int  _wifiPassLen = 0;
@@ -136,15 +112,12 @@ private:
         "0123456789"
         "_-@.!";
 
-    // ===== BUTTON FEEDBACK (legacy, UI hints) =====
     HintBtn _pressedBtn = HintBtn::NONE;
     uint8_t _hintFlash  = 0;
 
-    // ===== ANTI-FLICKER =====
     bool  _needFullClear  = true;
     Level _lastDrawnLevel = Level::ROOT;
 
-    // ===== ROOT MENU =====
     static constexpr MenuItem MENU[] = {
         { "Wi-Fi",      Level::WIFI     },
         { "Timezone",   Level::TIMEZONE },
@@ -153,11 +126,9 @@ private:
         { "About",      Level::ROOT     }
     };
 
-    // ===== TIME =====
     TimeService::Mode _tmpTimeMode = TimeService::AUTO;
     TimeService::Mode _bakTimeMode = TimeService::AUTO;
 
-    // ===== NIGHT =====
     NightService::Mode _tmpMode = NightService::Mode::AUTO;
     NightService::Mode _bakMode = NightService::Mode::AUTO;
 
@@ -169,7 +140,6 @@ private:
 
     static constexpr int NIGHT_STEP_MIN = 15;
 
-    // ===== TIMEZONE =====
     int32_t _tmpTzSec  = 0;
     int32_t _bakTzSec  = 0;
 
@@ -180,13 +150,14 @@ private:
     static constexpr int32_t TZ_MIN  = -43200;
     static constexpr int32_t TZ_MAX  =  50400;
 
-    // ===== WIFI =====
     bool _tmpWifiOn = true;
     bool _bakWifiOn = true;
-// =====================================================================
-    // 🔥 Wi-Fi CONTRACT CACHE (ОБЯЗАТЕЛЬНО)
-    // =====================================================================
+
     uint32_t _lastWifiListVersion  = 0;
     uint32_t _lastWifiStateVersion = 0;
 
+    // ===== UI CACHE FOR PARTIAL REDRAW =====
+    int _lastWifiListTop      = -1;
+    int _lastWifiListSelected = -1;
+    int _lastWifiNetCount     = -1;
 };

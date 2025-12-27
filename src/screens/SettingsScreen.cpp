@@ -51,15 +51,18 @@ void SettingsScreen::begin() {
     _wifiPassLen = 0;
     _wifiCharIdx = 0;
 
-    // 🔥 ВАЖНО: зафиксировать стартовые версии
+    // зафиксировать стартовые версии
     _lastWifiListVersion  = _wifi.listVersion();
     _lastWifiStateVersion = _wifi.stateVersion();
 
     updateButtonBarContext();
 
-    _dirty = true;
     _needFullClear  = true;
+    _dirty          = true;
     _lastDrawnLevel = _level;
+
+    // гарантируем перерисовку кнопок после full clear
+    _buttons.markDirty();
 
     _ui.bump(UiChannel::SCREEN);
 }
@@ -69,10 +72,6 @@ void SettingsScreen::begin() {
 // ============================================================================
 void SettingsScreen::update() {
 
-    // ------------------------------------------------------------------------
-    // Wi-Fi CONTRACT:
-    // перерисовываемся ТОЛЬКО если реально что-то изменилось
-    // ------------------------------------------------------------------------
     if (_wifi.listVersion() != _lastWifiListVersion ||
         _wifi.stateVersion() != _lastWifiStateVersion) {
 
@@ -86,7 +85,7 @@ void SettingsScreen::update() {
 
     if (_dirty) {
         _dirty = false;
-        redrawAll();   // реализовано в SettingsDraw.cpp
+        redrawAll();
     }
 }
 
@@ -180,18 +179,31 @@ void SettingsScreen::clearExitRequest() {
 void SettingsScreen::onThemeChanged() {
     _needFullClear = true;
     _dirty = true;
+    _buttons.markDirty();
 }
 
 // ============================================================================
 // SUBMENU
 // ============================================================================
 void SettingsScreen::enterSubmenu(Level lvl) {
+
+    if (_level == lvl)
+        return;
+
     _level = lvl;
     _mode  = UiMode::NAV;
     _subSelected = 0;
 
     _needFullClear = true;
-    _dirty = true;
+    _dirty         = true;
+
+    // сброс кешей partial redraw Wi-Fi list
+    _lastWifiListTop      = -1;
+    _lastWifiListSelected = -1;
+    _lastWifiNetCount     = -1;
+
+    // важно: после полного клира кнопки должны перерисоваться
+    _buttons.markDirty();
 }
 
 void SettingsScreen::exitSubmenu(bool /*apply*/) {
@@ -208,7 +220,6 @@ void SettingsScreen::updateButtonBarContext() {
         _buttons.setActions(true, true, true, true);
         _buttons.setHighlight(false, false, false, false);
     } else {
-        // EDIT
         _buttons.setLabels("-", "OK+", "+", "BACK+");
         _buttons.setActions(true, true, true, true);
         _buttons.setHighlight(false, true, false, false);
