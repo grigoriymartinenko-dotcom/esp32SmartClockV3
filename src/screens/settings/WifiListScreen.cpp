@@ -2,6 +2,13 @@
 #include <Adafruit_GFX.h>
 
 // ============================================================================
+// UX constants
+// ============================================================================
+static constexpr uint32_t PROGRESS_INTERVAL_MS = 300;
+static constexpr uint32_t INLINE_TIMEOUT_MS   = 1500;
+static constexpr int      PROGRESS_BLOCKS     = 8;
+
+// ============================================================================
 // ctor
 // ============================================================================
 WifiListScreen::WifiListScreen(
@@ -32,7 +39,6 @@ void WifiListScreen::begin() {
     _selected = 0;
     _netCount = _wifi.networksCount();
 
-    // начальное состояние — ТОЛЬКО от ScanState
     _state = (_wifi.scanState() == WifiService::ScanState::SCANNING)
         ? State::SCANNING
         : State::READY;
@@ -47,7 +53,7 @@ void WifiListScreen::begin() {
 void WifiListScreen::update() {
 
     // ------------------------------------------------------------
-    // Scan lifecycle → экранное состояние
+    // Scan lifecycle → FSM
     // ------------------------------------------------------------
     switch (_wifi.scanState()) {
 
@@ -118,7 +124,7 @@ void WifiListScreen::drawConnectionStatus(int baseY) {
 
         case WifiService::State::CONNECTING:
             _tft.setTextColor(th.warn, th.bg);
-            _tft.print("Reconnecting...");
+            _tft.print("Connecting...");
             break;
 
         default:
@@ -134,14 +140,31 @@ void WifiListScreen::drawSeparator(int y) {
     _tft.drawFastHLine(0, y, _tft.width(), th.textSecondary);
 }
 
+// ---------------------------------------------------------------------------
+// SCANNING — mini progress
+// ---------------------------------------------------------------------------
 void WifiListScreen::drawScanning(int baseY) {
 
     const Theme& th = theme();
-    _tft.setCursor(12, baseY + 12);
+    const uint32_t step =
+        (millis() / PROGRESS_INTERVAL_MS) % (PROGRESS_BLOCKS + 1);
+
+    _tft.setCursor(12, baseY + 10);
     _tft.setTextColor(th.muted, th.bg);
-    _tft.print("Scanning...");
+    _tft.print("Scanning");
+
+    _tft.setCursor(12, baseY + 26);
+    _tft.print("[");
+
+    for (int i = 0; i < PROGRESS_BLOCKS; ++i) {
+        _tft.print(i < (int)step ? '#' : ' ');
+    }
+    _tft.print("]");
 }
 
+// ---------------------------------------------------------------------------
+// LIST
+// ---------------------------------------------------------------------------
 void WifiListScreen::drawList(int baseY) {
 
     const Theme& th = theme();
@@ -159,8 +182,14 @@ void WifiListScreen::drawList(int baseY) {
         const bool sel = (idx == _selected);
 
         _tft.setCursor(8, y + 4);
-        _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
-        _tft.print(sel ? "> " : "  ");
+
+        if (!isRescan && isConnectedSsid(_wifi.ssidAt(idx))) {
+            _tft.setTextColor(th.textPrimary, th.bg);
+            _tft.print("✓ ");
+        } else {
+            _tft.setTextColor(sel ? th.select : th.textPrimary, th.bg);
+            _tft.print(sel ? "> " : "  ");
+        }
 
         if (isRescan) {
             _tft.print("|--- Rescan ---|");
@@ -203,12 +232,16 @@ void WifiListScreen::updateButtonBarContext() {
 
         case State::READY: {
             const bool onRescan = (_selected == _netCount);
+            const bool onConnected =
+                !onRescan && isConnectedSsid(_wifi.ssidAt(_selected));
 
             _buttons.setActions(true, true, true, true);
 
             if (onRescan) {
                 _buttons.setLabels("<", "RESCAN", ">", "BACK");
                 _buttons.setHighlight(false, true, false, false);
+            } else if (onConnected) {
+                _buttons.setLabels("<", "OK", ">", "BACK");
             } else {
                 _buttons.setLabels("<", "SELECT", ">", "BACK");
             }
@@ -266,10 +299,18 @@ void WifiListScreen::onShortOk() {
         return;
     }
 
-    // SELECT
     const char* ssid = _wifi.ssidAt(_selected);
     if (!ssid || !ssid[0]) return;
 
+    // Already connected → UX feedback only
+    if (isConnectedSsid(ssid)) {
+        _tft.setCursor(8, _layout.buttonBarY() - 14);
+        _tft.setTextColor(theme().muted, theme().bg);
+        _tft.print("Already connected");
+        return;
+    }
+
+    // CONNECT
     _wifi.connect(ssid, nullptr);
     updateButtonBarContext();
 }
