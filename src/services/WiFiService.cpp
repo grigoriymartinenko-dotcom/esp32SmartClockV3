@@ -404,10 +404,6 @@ const WifiService::Network& WifiService::networkAt(int i) const {
     return _networks[i];
 }
 
-// Legacy wrapper (используется SettingsWifi.cpp)
-const char* WifiService::ssidAt(int i) const {
-    return networkAt(i).ssid;
-}
 
 uint32_t WifiService::listVersion() const {
     return _listVersion;
