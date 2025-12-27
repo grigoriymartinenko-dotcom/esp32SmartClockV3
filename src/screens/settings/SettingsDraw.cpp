@@ -1,6 +1,7 @@
 #include "screens/SettingsScreen.h"
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
+#include <WiFi.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -21,6 +22,41 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
     char sign = '+';
     if (s < 0) { sign = '-'; s = -s; }
     snprintf(out, outSz, "%c%02d:%02d", sign, s / 3600, (s % 3600) / 60);
+}
+
+// ============================================================================
+// Wi-Fi RSSI bars (ESP32-safe)
+// ============================================================================
+static int rssiToBars(int rssi) {
+    if (rssi >= -55) return 4;
+    if (rssi >= -65) return 3;
+    if (rssi >= -75) return 2;
+    if (rssi >= -85) return 1;
+    return 0;
+}
+
+static void drawRssiBars(
+    Adafruit_ST7735& tft,
+    const Theme& th,
+    int x,
+    int yMid,
+    int rssi
+) {
+    const int bw   = 2;
+    const int gap  = 1;
+    const int bars = 4;
+    const int h    = 10;
+
+    int filled = rssiToBars(rssi);
+
+    for (int i = 0; i < bars; i++) {
+        int barH = 2 + i * 2;          // 2,4,6,8
+        int bx   = x + i * (bw + gap);
+        int by   = yMid + h / 2 - barH;
+
+        uint16_t col = (i < filled) ? th.textPrimary : th.muted;
+        tft.fillRect(bx, by, bw, barH, col);
+    }
 }
 
 // ============================================================================
@@ -141,7 +177,6 @@ void SettingsScreen::drawWifiList() {
 
     const WifiService::ScanState scan = _wifi.scanState();
 
-    // ---------------- Scanning ----------------
     if (scan == WifiService::ScanState::SCANNING) {
         _tft.setCursor(20, 50);
         _tft.setTextColor(th.muted, th.bg);
@@ -159,7 +194,6 @@ void SettingsScreen::drawWifiList() {
             ? prefs.wifiSsid()
             : nullptr;
 
-    // ---------------- No networks ----------------
     if ((scan == WifiService::ScanState::DONE ||
          scan == WifiService::ScanState::FAILED) && netCount == 0) {
 
@@ -172,6 +206,7 @@ void SettingsScreen::drawWifiList() {
     }
 
     constexpr int VISIBLE_ROWS = 4;
+    constexpr int ICON_W = 12;
 
     for (int i = 0; i < VISIBLE_ROWS; i++) {
 
@@ -188,14 +223,22 @@ void SettingsScreen::drawWifiList() {
         _tft.print(sel ? "> " : "  ");
         _tft.print(ssid ? ssid : "<?>");
 
-        // ---- connected marker ----
+        // RSSI — ТОЛЬКО для подключённой сети (ESP32 limitation)
+        int rssi = -100;
+        if (ssid && connectedSsid && strcmp(ssid, connectedSsid) == 0) {
+            rssi = WiFi.RSSI();
+        }
+
+        int iconX = _tft.width() - ICON_W - 2;
+        int yMid  = rowY + rowH / 2;
+        drawRssiBars(_tft, th, iconX, yMid, rssi);
+
         if (ssid && connectedSsid && strcmp(ssid, connectedSsid) == 0) {
             _tft.setTextColor(th.textSecondary, th.bg);
             _tft.print(" [connected]");
         }
     }
 
-    // ---------------- Rescan ----------------
     int rowY = listTop + VISIBLE_ROWS * rowH;
     bool sel = (_wifiListSelected == rescanIdx);
 
@@ -259,4 +302,4 @@ void SettingsScreen::drawTimezone() {
     _tft.setCursor(18, 10);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Timezone");
-}
+}git status
