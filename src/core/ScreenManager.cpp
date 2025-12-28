@@ -134,48 +134,45 @@ void ScreenManager::update() {
     _layout->setHasStatusBar(wantStatus);
     _layout->setHasBottomBar(wantButtons);
 
-    //applyLayout();
+    // =========================================================
+    // 1️⃣ СНАЧАЛА экран рисует СВОЙ контент
+    // =========================================================
+    _current->update();
 
-    if (wantStatus) {
-        uint32_t v;
+    // =========================================================
+    // 2️⃣ Потом системные разделители
+    // =========================================================
+    _sepStatus->update();
+    _sepBottom->update();
 
-        v = _uiVersion->version(UiChannel::TIME);
-        if (v != _lastTimeVer) {
-            _lastTimeVer = v;
-            _statusBar->markDirty();
-        }
+    // =========================================================
+    // 3️⃣ ПОСЛЕДНИМ — StatusBar (как overlay)
+    // =========================================================
+if (wantStatus) {
 
-        v = _uiVersion->version(UiChannel::THEME);
-        if (v != _lastThemeVer) {
-            _lastThemeVer = v;
-            _statusBar->markDirty();
-        }
-
-        v = _uiVersion->version(UiChannel::SCREEN);
-        if (v != _lastScreenVer) {
-            _lastScreenVer = v;
-            _statusBar->markDirty();
-        }
-
-        _statusBar->update();
+    if (_uiVersion->changed(UiChannel::TIME)) {
+        _statusBar->drawTimeOnly();   // ⬅️ ТОЛЬКО дата / день недели
     }
 
-    // ===== ButtonBar (визуальные кнопки) =====
-// 1️⃣ СНАЧАЛА экран рисует СВОЙ контент
-_current->update();
-
-// 2️⃣ Потом системные разделители
-_sepStatus->update();
-_sepBottom->update();
-
-// 3️⃣ ПОСЛЕДНИМ — ButtonBar (он фиксирует GFX-состояние)
-if (_buttonBar) {
-    _buttonBar->setVisible(wantButtons);
-    if (wantButtons) {
-        _buttonBar->update();
+    if (_uiVersion->changed(UiChannel::THEME) ||
+        _uiVersion->changed(UiChannel::SCREEN) ||
+        _uiVersion->changed(UiChannel::WIFI))
+    {
+        _statusBar->markDirty();
     }
+
+    _statusBar->update();
 }
 
+    // =========================================================
+    // 4️⃣ И СОВСЕМ ПОСЛЕДНИМ — ButtonBar
+    // =========================================================
+    if (_buttonBar) {
+        _buttonBar->setVisible(wantButtons);
+        if (wantButtons) {
+            _buttonBar->update();
+        }
+    }
 }
 
 // ============================================================================

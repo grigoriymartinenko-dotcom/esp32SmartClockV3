@@ -2,6 +2,8 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "ui/weather/WeatherIcons.h"   // ← ИКОНКИ ПОГОДЫ
+
 /*
  * ForecastScreen.cpp
  * ------------------
@@ -110,7 +112,6 @@ void ForecastScreen::update() {
     const int nightTemp = (int)round(d->tempNight);
     const int hum       = (int)d->humidity;
 
-    // 🔥 КЛЮЧЕВОЙ FIX: первый вход в READY всегда force
     const bool force =
         _dirty ||
         stateChanged ||
@@ -196,69 +197,122 @@ static void drawDegreeDot(Adafruit_ST7735& tft, int x, int y, uint16_t color) {
     tft.fillCircle(x, y, 1, color);
 }
 
+// --------------------------------------------------------------------------
+// DAY ROW + WEATHER ICON
+// --------------------------------------------------------------------------
 void ForecastScreen::drawRowDay(bool force, int t) {
     if (!force) return;
 
     const Theme& th = theme();
     const int y = _layout.contentY() + 18;
 
+    // очищаем строку целиком
     _tft.fillRect(0, y, _tft.width(), 16, th.bg);
+
+    // ----------------------------------------------------------------------
+    // ИКОНКА ПОГОДЫ (слева)
+    // ----------------------------------------------------------------------
+    const ForecastDay* d = _forecast.day(_dayIndex);
+    if (d) {
+        WeatherIcon icon = getWeatherIcon(d->weatherCode, false);
+
+        const int iconX = 4;
+        const int iconY = y - 2;   // визуально центрируем относительно текста
+
+        _tft.drawBitmap(
+            iconX,
+            iconY,
+            icon.data,
+            icon.width,
+            icon.height,
+            th.textPrimary
+        );
+    }
+
+    // ----------------------------------------------------------------------
+    // ТЕКСТ "Day: 25 °C"
+    // ----------------------------------------------------------------------
     _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(18, y + 6);
+    _tft.setCursor(32, y + 6);   // ← сдвиг вправо под иконку
 
     char buf[16];
     snprintf(buf, sizeof(buf), "Day:   %d", t);
     _tft.print(buf);
 
-int xTextEnd = 18 + strlen(buf) * 6;
+    int xTextEnd = 32 + strlen(buf) * 6;
 
-// пробел
-_tft.setCursor(xTextEnd + 2, y + 6);
-_tft.print(" ");
+    _tft.setCursor(xTextEnd + 2, y + 6);
+    _tft.print(" ");
 
-// рисуем °
-drawDegreeDot(
-    _tft,
-    xTextEnd + 2 + 4,   // чуть правее пробела
-    y + 3,
-    th.textPrimary
-);
+    drawDegreeDot(
+        _tft,
+        xTextEnd + 2 + 4,
+        y + 3,
+        th.textPrimary
+    );
 
-// печатаем "C"
-_tft.setCursor(xTextEnd + 2 + 8, y + 6);
-_tft.print("C");
+    _tft.setCursor(xTextEnd + 2 + 8, y + 6);
+    _tft.print("C");
 }
 
+// --------------------------------------------------------------------------
 void ForecastScreen::drawRowNight(bool force, int t) {
     if (!force) return;
 
     const Theme& th = theme();
     const int y = _layout.contentY() + 38;
 
+    // очищаем строку целиком
     _tft.fillRect(0, y, _tft.width(), 16, th.bg);
+
+    // ----------------------------------------------------------------------
+    // ИКОНКА ПОГОДЫ (night variant)
+    // ----------------------------------------------------------------------
+    const ForecastDay* d = _forecast.day(_dayIndex);
+    if (d) {
+        // night = true → moon / night icon
+        WeatherIcon icon = getWeatherIcon(d->weatherCode, true);
+
+        const int iconX = 4;
+        const int iconY = y;   // 16x16 → идеально входит в строку
+
+        _tft.drawBitmap(
+            iconX,
+            iconY,
+            icon.data,
+            icon.width,
+            icon.height,
+            th.textPrimary
+        );
+    }
+
+    // ----------------------------------------------------------------------
+    // ТЕКСТ "Night: -3 °C"
+    // ----------------------------------------------------------------------
     _tft.setTextColor(th.textPrimary, th.bg);
-    _tft.setCursor(18, y + 6);
+    _tft.setCursor(32, y + 6);
 
     char buf[16];
     snprintf(buf, sizeof(buf), "Night: %d", t);
     _tft.print(buf);
 
-int xTextEnd = 18 + strlen(buf) * 6;
+    int xTextEnd = 32 + strlen(buf) * 6;
 
-_tft.setCursor(xTextEnd + 2, y + 6);
-_tft.print(" ");
+    _tft.setCursor(xTextEnd + 2, y + 6);
+    _tft.print(" ");
 
-drawDegreeDot(
-    _tft,
-    xTextEnd + 2 + 4,
-    y + 3,
-    th.textPrimary
-);
+    drawDegreeDot(
+        _tft,
+        xTextEnd + 2 + 4,
+        y + 3,
+        th.textPrimary
+    );
 
-_tft.setCursor(xTextEnd + 2 + 8, y + 6);
-_tft.print("C");
+    _tft.setCursor(xTextEnd + 2 + 8, y + 6);
+    _tft.print("C");
 }
 
+// --------------------------------------------------------------------------
 void ForecastScreen::drawRowHum(bool force, int hum) {
     if (!force) return;
 
@@ -274,6 +328,7 @@ void ForecastScreen::drawRowHum(bool force, int hum) {
     _tft.print(buf);
 }
 
+// --------------------------------------------------------------------------
 void ForecastScreen::drawLoading(bool force) {
     if (!force) return;
     const Theme& th = theme();

@@ -10,14 +10,18 @@
  * ---------
  * Верхняя статусная панель (2 строки):
  *
- *  ● WiFi        DD.MM.YYYY
- *  ● NTP / RTC   weekday
+ *  ● WiFi        Monday  28.12.2025
+ *  ● NTP / RTC
  *
  * ПРАВИЛА:
  *  - НЕТ таймеров
  *  - НЕТ millis()
- *  - НЕТ вызовов из экранов
- *  - Состояние читается ТОЛЬКО из сервисов
+ *  - НЕТ логики времени
+ *  - НЕТ полной перерисовки по TIME-тику
+ *
+ * КЛЮЧ:
+ *  - Статический слой рисуется РЕДКО
+ *  - Строка даты рисуется ТОЛЬКО если реально изменилась
  */
 class StatusBar {
 public:
@@ -40,16 +44,19 @@ public:
     void update();
     void markDirty();
 
-private:
-    void draw();
+    // вызывается ТОЛЬКО при UiChannel::TIME
+    void drawTimeOnly();
 
+private:
+    // --- drawing ---
+    void drawStatic();
+    void drawDot(int cx, int cy, uint16_t color);
+
+    // --- helpers ---
     Status mapWifiStatus() const;
     Status mapTimeStatus() const;
-
     uint16_t statusDotColor(Status s, const Theme& th) const;
-    const char* weekdayUaLatFromTm(const tm& t) const;
-
-    void drawDot(int cx, int cy, uint16_t color);
+    const char* weekdayEnFromTm(const tm& t) const;
 
 private:
     Adafruit_ST7735& _tft;
@@ -59,6 +66,10 @@ private:
 
     Status _wifiSt = OFFLINE;
     Status _timeSt = OFFLINE;
+
+    // --- visual cache ---
+    uint16_t _lastBg = 0;
+    char     _lastTimeStr[32] = {0};
 
     bool _dirty = true;
 };
