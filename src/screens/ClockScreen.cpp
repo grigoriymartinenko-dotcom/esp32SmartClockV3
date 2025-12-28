@@ -2,12 +2,12 @@
 #include <math.h>
 
 // =====================================================
-// Fade config (только HH:MM)
+// Fade config (HH:MM)
 // =====================================================
-static constexpr uint8_t FADE_STEPS = 5;
+static constexpr uint8_t FADE_STEPS = 6;
 
 // =====================================================
-// Настройка расположения времени
+// Time layout
 // =====================================================
 static constexpr int TIME_SHIFT_X = 0;
 static constexpr int TIME_SHIFT_Y = -6;
@@ -17,6 +17,15 @@ static constexpr int TIME_SHIFT_Y = -6;
 // =====================================================
 static constexpr int DHT_Y_OFFSET = 4;
 static constexpr int DHT_ROW_H    = 12;
+
+// =====================================================
+// helpers
+// =====================================================
+static float smooth01(float t) {
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return t * t * (3.0f - 2.0f * t);
+}
 
 // =====================================================
 // ctor
@@ -30,7 +39,7 @@ ClockScreen::ClockScreen(
     UiVersionService& uiVer,
     DhtService& dhtService
 )
-    : Screen(themeService)          // базовая тема всё ещё живёт в Screen
+    : Screen(themeService)
     , tft(t)
     , time(timeService)
     , night(nightTransition)
@@ -48,13 +57,11 @@ void ClockScreen::begin() {
     uint32_t sv = uiVersion.version(UiChannel::SCREEN);
     if (sv != lastScreenV) {
         lastScreenV = sv;
-
-        fadeActive = !night.transitioning();
+        fadeActive = true;
         fadeStep   = 0;
     }
 
-    const float k = night.value();
-    const ThemeBlend th = themeService().interpolate(k);
+    const ThemeBlend th = themeService().interpolate(night.value());
 
     // Очистка рабочей области
     tft.fillRect(
@@ -68,6 +75,7 @@ void ClockScreen::begin() {
     lastTimeV = uiVersion.version(UiChannel::TIME);
     lastDhtV  = uiVersion.version(UiChannel::DHT);
 
+    drawTime(true);
     drawDht(true);
 }
 
@@ -101,7 +109,7 @@ void ClockScreen::update() {
         drawTime(false);
     }
 
-    // ===== SENSOR (DHT) =====
+    // ===== DHT =====
     uint32_t dhtV = uiVersion.version(UiChannel::DHT);
     if (dht.isValid() && (!dhtDrawnOnce || dhtV != lastDhtV)) {
         lastDhtV = dhtV;
@@ -110,26 +118,20 @@ void ClockScreen::update() {
 }
 
 // =====================================================
-// drawTime
+// drawTime (premium look)
 // =====================================================
 void ClockScreen::drawTime(bool force) {
 
     if (!time.isValid())
         return;
 
-    const float k = night.value();
-    const ThemeBlend th = themeService().interpolate(k);
+    const ThemeBlend th = themeService().interpolate(night.value());
 
-    // ---- fade HH:MM ----
+    // ---- fade ----
     float fadeK = 1.0f;
     if (fadeActive) {
-        float t = (float)fadeStep / (float)FADE_STEPS;
-        fadeK = t * t;
+        fadeK = smooth01((float)fadeStep / (float)FADE_STEPS);
     }
-
-    // Цвет времени — от muted → fg
-    const uint16_t timeColor =
-        ThemeService::blend565(th.muted, th.fg, fadeK);
 
     const int h = time.hour();
     const int m = time.minute();
@@ -140,38 +142,54 @@ void ClockScreen::drawTime(bool force) {
     const int TIME_W  = 5 * DIGIT_W;
     const int TIME_H  = DIGIT_H;
 
-    const int safeY = layout.contentY();
-    const int safeH = layout.contentH();
-
-    const int X0 = (tft.width() - TIME_W) / 2;
-    const int Y0 = safeY + (safeH - TIME_H) / 2;
-
-    const int X = X0 + TIME_SHIFT_X;
-    const int Y = Y0 + TIME_SHIFT_Y;
+    const int X0 = (tft.width() - TIME_W) / 2 + TIME_SHIFT_X;
+    const int Y0 = layout.contentY()
+                 + (layout.contentH() - TIME_H) / 2
+                 + TIME_SHIFT_Y;
 
     if (force) {
-        tft.fillRect(X, Y, TIME_W, TIME_H, th.bg);
+        tft.fillRect(X0, Y0, TIME_W, TIME_H, th.bg);
     }
 
     const bool colonVisible =
         (uiVersion.version(UiChannel::TIME) % 2) == 0;
 
     tft.setTextSize(3);
-    tft.setTextColor(timeColor, th.bg);
-    tft.setCursor(X, Y);
 
-    if (colonVisible)
-        tft.printf("%02d:%02d", h, m);
-    else
-        tft.printf("%02d %02d", h, m);
+    // ---- shadow (pseudo depth) ----
+    tft.setTextColor(th.muted, th.bg);
+    tft.setCursor(X0 + 1, Y0 + 1);
+    tft.printf("%02d:%02d", h, m);
+
+    // ---- HH ----
+    uint16_t hhColor =
+        ThemeService::blend565(th.muted, th.fg, fadeK);
+
+    tft.setTextColor(hhColor, th.bg);
+    tft.setCursor(X0, Y0);
+    tft.printf("%02d", h);
+
+    // ---- colon ----
+    uint16_t colonColor =
+        ThemeService::blend565(th.muted, th.accent, fadeK);
+
+    tft.setTextColor(colonColor, th.bg);
+    tft.setCursor(X0 + 2 * DIGIT_W, Y0);
+    tft.print(colonVisible ? ":" : " ");
+
+    // ---- MM ----
+    uint16_t mmColor =
+        ThemeService::blend565(th.muted, th.fg, fadeK * 0.85f);
+
+    tft.setTextColor(mmColor, th.bg);
+    tft.setCursor(X0 + 3 * DIGIT_W, Y0);
+    tft.printf("%02d", m);
 
     // ---- seconds ----
-    const int SEC_W = 24;
-    const int SEC_H = 12;
-    const int SEC_X = X + TIME_W - SEC_W;
-    const int SEC_Y = Y + TIME_H + 4;
+    const int SEC_X = X0 + TIME_W - 24;
+    const int SEC_Y = Y0 + TIME_H + 4;
 
-    tft.fillRect(SEC_X, SEC_Y, SEC_W, SEC_H, th.bg);
+    tft.fillRect(SEC_X, SEC_Y, 24, 12, th.bg);
     tft.setTextSize(1);
     tft.setTextColor(th.muted, th.bg);
     tft.setCursor(SEC_X, SEC_Y);
@@ -183,9 +201,7 @@ void ClockScreen::drawTime(bool force) {
 // =====================================================
 void ClockScreen::drawDht(bool force) {
 
-    const float k = night.value();
-    const ThemeBlend th = themeService().interpolate(k);
-
+    const ThemeBlend th = themeService().interpolate(night.value());
     const int y = layout.contentY() + DHT_Y_OFFSET;
 
     if (force) {

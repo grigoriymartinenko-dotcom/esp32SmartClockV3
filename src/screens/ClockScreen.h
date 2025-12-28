@@ -16,15 +16,14 @@
  * -----------
  * Главный экран часов.
  *
- * АРХИТЕКТУРА (ОБНОВЛЕНО):
+ * АРХИТЕКТУРА:
  *  - Экран НЕ знает про Day/Night
- *  - Экран НЕ использует THEME_DAY / THEME_NIGHT
  *  - Экран работает ТОЛЬКО с ThemeBlend
  *
- * Пайплайн:
- *   k = nightTransition.value()
- *   ThemeBlend th = themeService.interpolate(k)
- *   draw(th)
+ * UX:
+ *  - Двухцветное время (HH : MM)
+ *  - Мягкий fade при старте / смене экрана
+ *  - Лёгкий псевдо-объём (shadow)
  */
 
 class ClockScreen : public Screen {
@@ -39,7 +38,6 @@ public:
         DhtService&             dhtService
     );
 
-    // Screen interface
     void begin() override;
     void update() override;
 
