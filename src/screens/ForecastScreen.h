@@ -20,7 +20,10 @@
  *  - Экран реагирует ТОЛЬКО на UiVersionService
  *
  * Все решения о цветах и плавности переходов
- * принимаются ВНЕ экрана (ThemeService).
+ * принимаются ВНЕ экрана (ThemeService + NightTransitionService + ColorTemp).
+ *
+ * UX:
+ *  - перелистывание дней с анимацией (slide + лёгкий fade)
  */
 class ForecastScreen : public Screen {
 public:
@@ -50,17 +53,28 @@ private:
 private:
     // ---- draw helpers ----
     void redrawAll();
-    void drawHeader(const ThemeBlend& b,
-                    const ForecastDay* d,
-                    uint8_t idx,
-                    uint8_t total);
+
+    // Рисование готового состояния (одного дня) с X-смещением.
+    // xOff может быть отрицательным/положительным для slide-анимации.
+    void drawReadyAtX(const ThemeBlend& b, const ForecastDay* d,
+                      uint8_t idx, uint8_t total, int xOff);
+
+    void drawHeaderAtX(const ThemeBlend& b,
+                       const ForecastDay* d,
+                       uint8_t idx,
+                       uint8_t total,
+                       int xOff);
 
     void drawLoading(const ThemeBlend& b);
     void drawError(const ThemeBlend& b);
 
-    void drawRowDay(const ThemeBlend& b, const ForecastDay* d);
-    void drawRowNight(const ThemeBlend& b, const ForecastDay* d);
-    void drawRowHum(const ThemeBlend& b, int hum);
+    void drawRowDayAtX(const ThemeBlend& b, const ForecastDay* d, int xOff);
+    void drawRowNightAtX(const ThemeBlend& b, const ForecastDay* d, int xOff);
+    void drawRowHumAtX(const ThemeBlend& b, int hum, int xOff);
+
+    // ---- animation ----
+    void startDayTransition(int dir);        // dir: -1 (left), +1 (right)
+    void drawTransitionFrame(const ThemeBlend& b);
 
 private:
     Adafruit_ST7735&  _tft;
@@ -75,4 +89,14 @@ private:
     uint8_t _lastDayIndex = 255;
 
     bool _dirty = true;
+
+    // ---- animation state ----
+    bool     _animActive   = false;
+    uint32_t _animStartMs  = 0;
+    uint8_t  _animFrom     = 0;
+    uint8_t  _animTo       = 0;
+    int      _animDir      = 0; // -1 or +1
+
+    // Длительность анимации (мс). 180..240 обычно выглядит отлично.
+    static constexpr uint16_t ANIM_MS = 200;
 };

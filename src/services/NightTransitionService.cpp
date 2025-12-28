@@ -10,6 +10,7 @@ NightTransitionService::NightTransitionService()
     : _targetNight(false)
     , _t(0.0f)
     , _lastMs(0)
+    , _v(0.0f)
     , _dirty(true)   // чтобы первый кадр гарантированно отрисовался
     , _lastQ(255)    // заведомо "не равно" quantize8(0.0)
 {
@@ -48,11 +49,16 @@ void NightTransitionService::setTarget(bool night) {
 void NightTransitionService::update() {
     const uint32_t now = millis();
 
-    // Первый вызов: просто инициализируем таймер.
+    // Первый вызов: просто инициализируем таймер и синхронизируем _v.
     if (_lastMs == 0) {
         _lastMs = now;
-        _dirty = true;          // первый кадр/итерация
-        _lastQ = quantize8(value());
+
+        // Сразу вычислим "готовое" значение, чтобы первый кадр был корректным.
+        const float eased = smoothstep(_t);
+        _v = eased;
+
+        _dirty = true;
+        _lastQ = quantize8(_v);
         return;
     }
 
@@ -63,9 +69,11 @@ void NightTransitionService::update() {
     // ограничим шаг, чтобы не "телепортировать" переход.
     if (dtMs > 250) dtMs = 250;
 
-    const float prevValue = value();
+    const float prevV = _v;
 
-    // Линейно двигаем t к цели.
+    // ------------------------------------------------------------------------
+    // 1) линейно двигаем _t к цели
+    // ------------------------------------------------------------------------
     if (_targetNight) {
         _t += (float)dtMs * SPEED;
         if (_t >= 1.0f - SNAP_EPS) _t = 1.0f;
@@ -74,15 +82,41 @@ void NightTransitionService::update() {
         if (_t <= 0.0f + SNAP_EPS) _t = 0.0f;
     }
 
-    // Dirty-логика: считаем "заметным" изменение по квантованию 0..255
-    // уже после easing. Это ближе к тому, как глаз видит изменение.
-    const float curValue = value();
-    const uint8_t q = quantize8(curValue);
+    // ------------------------------------------------------------------------
+    // 2) easing
+    // ------------------------------------------------------------------------
+    const float eased = smoothstep(_t);
 
-    // dirty если:
-    //  - поменялся квант
-    //  - или это самый первый апдейт/кадр
-    _dirty = (q != _lastQ) || (prevValue != curValue);
+    // ------------------------------------------------------------------------
+    // 3) inertia / smoothing: мягко догоняем eased
+    // ------------------------------------------------------------------------
+    //
+    // Экспоненциальное сглаживание:
+    //   v += (target - v) * alpha
+    //
+    // alpha зависит от dt, чтобы скорость была одинаковой при разных FPS.
+    //
+    // Простая практичная формула:
+    //   alpha = 1 - pow(1 - INERTIA, dtMs)
+    // где INERTIA ~ 0.03..0.05
+    //
+    float alpha = 1.0f - powf(1.0f - INERTIA, (float)dtMs);
+    if (alpha < 0.0f) alpha = 0.0f;
+    if (alpha > 1.0f) alpha = 1.0f;
+
+    _v += (eased - _v) * alpha;
+
+    // Прибиваем совсем к краям, чтобы не было вечного дрейфа _v.
+    if (_t <= 0.0f) _v = 0.0f;
+    if (_t >= 1.0f) _v = 1.0f;
+
+    // ------------------------------------------------------------------------
+    // dirty-логика: "заметное" изменение по квантованию 0..255 уже после
+    // easing + smoothing. Это ближе к тому, как глаз видит изменение.
+    // ------------------------------------------------------------------------
+    const uint8_t q = quantize8(_v);
+
+    _dirty = (q != _lastQ) || (prevV != _v);
     _lastQ = q;
 }
 
@@ -117,6 +151,5 @@ float NightTransitionService::nightFactor() const {
 }
 
 float NightTransitionService::value() const {
-    // Визуальный easing
-    return smoothstep(_t);
+    return _v;
 }

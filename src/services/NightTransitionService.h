@@ -24,6 +24,13 @@
  *   NightTransitionService::setTarget(nightNow)
  *   NightTransitionService::update() в loop()
  *   UI/Theme берет NightTransitionService::value() и смешивает цвета
+ *
+ * ДОПОЛНЕНИЕ (UX):
+ *  value() выдаёт "готовое" значение для UI:
+ *   - линейный фактор t (0..1) → easing smoothstep
+ *   - затем "мягкое догоняние" (экспоненциальное сглаживание), чтобы:
+ *       * убрать микродёргание из-за неровного dt
+ *       * получить более "дорогой" закат/рассвет
  */
 
 class NightTransitionService {
@@ -69,7 +76,7 @@ public:
     bool targetNight() const;
 
     // Фактический коэффициент (0..1) *до easing*.
-    // Полезно для отладки. Для UI почти всегда нужен value().
+    // Полезно для отладки.
     float rawFactor() const;
 
     // Коэффициент ночи (0..1) для логики.
@@ -79,8 +86,9 @@ public:
     // Универсальное значение для UI и Theme.
     // Именно ЭТОТ метод используйте для blend'а цветов.
     //
-    // Здесь применяется easing (smoothstep), чтобы визуально переход был
-    // мягче на старте и на финише, без "механического" линейного движения.
+    // Здесь применяется:
+    //  - easing (smoothstep)
+    //  - сглаживание (inertia), чтобы переход выглядел "дороже"
     float value() const;
 
 private:
@@ -95,6 +103,9 @@ private:
     float    _t;             // текущий фактор (0.0 .. 1.0), линейный "прогресс"
     uint32_t _lastMs;        // время предыдущего update()
 
+    // "Сглаженное" готовое значение для UI (после easing + inertia)
+    float    _v;
+
     bool     _dirty;         // изменилось заметно с прошлого update()
     uint8_t  _lastQ;         // последний квант (0..255) для dirty
 
@@ -104,4 +115,9 @@ private:
 
     // Порог "прибивания" к краям.
     static constexpr float SNAP_EPS = 0.0015f; // ~0.15%
+
+    // Сглаживание итогового value() (inertia).
+    // Чем больше — тем быстрее догоняем.
+    // 0.020..0.045 выглядит мягко на TFT.
+    static constexpr float INERTIA = 0.035f;
 };
