@@ -23,7 +23,7 @@
 #include "services/RtcService.h"
 #include "services/PreferencesService.h"
 #include "services/WifiService.h"
-
+#include "services/NightTransitionService.h"
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
 
@@ -81,7 +81,7 @@ LayoutService layout(tft);
 // UI VERSION
 // =====================================================
 UiVersionService uiVersion;
-
+NightTransitionService nightTransition;
 // =====================================================
 // SERVICES
 // =====================================================
@@ -248,7 +248,7 @@ void loop() {
     wifi.update();
     dht.update();
     connectivity.update();
-
+nightTransition.update();
     ButtonEvent e;
     while (buttons.poll(e)) {
         app.handleEvent(e);
