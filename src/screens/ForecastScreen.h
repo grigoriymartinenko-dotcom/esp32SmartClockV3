@@ -6,20 +6,19 @@
 #include "services/ForecastService.h"
 #include "services/LayoutService.h"
 
+#include "ui/weather/WeatherIcons.h"
+
 /*
- * ForecastScreen
- * --------------
- * Реактивный экран прогноза (до 5 дней).
+ * ForecastScreen (SAFE MODE)
+ * -------------------------
+ * Стабильная версия без NightTransition / ThemeBlend.
  *
- * UX:
- *  - SHORT LEFT/RIGHT -> листание дней
- *  - LONG BACK        -> Clock (AppController)
- *  - LONG OK          -> Settings (глобально)
+ * Цель:
+ *  - убрать мусор "4545646545"
+ *  - убрать мигание
+ *  - гарантировать целостный рендер
  *
- * Состояния:
- *  - LOADING  -> прогноз ещё загружается
- *  - READY    -> данные есть
- *  - ERROR    -> ошибка (WiFi / HTTP / JSON)
+ * Красоту вернём ПОСЛЕ стабилизации сервиса.
  */
 class ForecastScreen : public Screen {
 public:
@@ -34,9 +33,7 @@ public:
     void update() override;
 
     bool hasStatusBar() const override { return true; }
-    //bool hasBottomBar() const override { return false; }
 
-    // вызывается AppController
     void onShortLeft();
     void onShortRight();
 
@@ -48,26 +45,19 @@ private:
     };
 
 private:
-    // draw helpers
     void drawHeader(bool force, const ForecastDay* d, uint8_t idx, uint8_t total);
     void drawLoading(bool force);
     void drawError(bool force);
-    void drawRowDay(bool force, int dayTemp);
-    void drawRowNight(bool force, int nightTemp);
+    void drawRowDay(bool force, const ForecastDay* d);
+    void drawRowNight(bool force, const ForecastDay* d);
     void drawRowHum(bool force, int hum);
 
-    // utils
     void clearWorkArea();
-    //void hardClearBottom2px();
-    void resetCache();
-    bool themeChanged() const;
 
 private:
     Adafruit_ST7735& _tft;
     ForecastService& _forecast;
     LayoutService&   _layout;
-
-    bool _dirty = true;
 
     UiState _state = UiState::LOADING;
     UiState _lastState = UiState::ERROR;
@@ -75,9 +65,5 @@ private:
     uint8_t _dayIndex = 0;
     uint8_t _lastDayIndex = 255;
 
-    int  _lastDay   = -10000;
-    int  _lastNight = -10000;
-    int  _lastHum   = -1;
-
-    uint16_t _lastBg = 0;
+    bool _dirty = true;
 };

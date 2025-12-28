@@ -27,6 +27,9 @@ public:
         const char* lang
     );
 
+public:
+    bool isUpdating() const { return _updating; }
+
     void begin();
     void update();
 

@@ -268,8 +268,6 @@ void loop() {
         app.handleEvent(e);
     }
 
-    forecastService.update();
-
     if (timeService.shouldWriteRtc()) {
         tm now;
         if (getLocalTime(&now)) {
@@ -278,5 +276,14 @@ void loop() {
         }
     }
 
+    // =========================================================
+    // [CHANGE] СНАЧАЛА РИСУЕМ UI, ПОТОМ УЖЕ БЛОКИРУЮЩИЙ HTTP/JSON
+    // =========================================================
     screenManager.update();
+
+    // =========================================================
+    // [CHANGE] ForecastService.update() перенесён В КОНЕЦ loop()
+    // чтобы не рвать кадр во время отрисовки.
+    // =========================================================
+    forecastService.update();
 }

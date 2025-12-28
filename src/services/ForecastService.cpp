@@ -7,6 +7,7 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <math.h>
 
 #include "services/ForecastService.h"
 
@@ -16,17 +17,13 @@
  * FREE OpenWeather /data/2.5/forecast (3h шаг) → агрегируем в дни.
  *
  * ВАЖНОЕ исправление:
- * Раньше "дни" считались так:
- *     firstDay = ts - (ts % 86400)
- * Это считает сутки в UTC, а у нас нужен ЛОКАЛЬНЫЙ день (Kyiv timezone).
+ *  - локальный день через (tm_year, tm_yday), а не UTC 86400
  *
- * Теперь:
- *  - для каждого item берём localtime_r(ts) -> tm
- *  - используем tm_yday (день года) + tm_year как "ключ дня"
- *  - index = (key - todayKey) → 0..4
- *
- * Так "Day 09..18" и "Night" всегда будут в одном календарном дне,
- * и температуры не будут "съезжать" на соседний день.
+ * FIX (по твоим симптомам):
+ * 1) Раньше weatherCode вообще не устанавливался -> иконки могли пропадать.
+ * 2) tempDay/tempNight могут быть NAN (если нет слотов 09..18 или ночных),
+ *    это ОК как данные. Но UI обязан обрабатывать NAN.
+ *    (Этим мы займёмся в ForecastScreen.cpp)
  */
 
 ForecastService::ForecastService(
@@ -148,20 +145,17 @@ bool ForecastService::fetchForecast() {
     _model.reset();
 
     // -----------------------------
-    // "Ключ дня" = (tm_year, tm_yday)
-    // Чтобы получить индекс 0..4, нужен todayKey.
+    // todayKey (локальный день)
     // -----------------------------
     time_t nowTs = time(nullptr);
     tm nowLocal{};
     localtime_r(&nowTs, &nowLocal);
 
-    // Если время ещё не синхронизировано и localtime() мусор —
-    // прогноз всё равно можно агрегировать, но корректность "дней" пострадает.
-    // В нормальном режиме NTP уже выставляет время и timezone, так что ок.
     const int todayKey = (nowLocal.tm_year * 400) + nowLocal.tm_yday;
 
     struct Acc {
         bool used = false;
+
         float daySum = 0;
         float nightSum = 0;
         int dayCnt = 0;
@@ -170,8 +164,12 @@ bool ForecastService::fetchForecast() {
         uint32_t dayMidnightDt = 0;
         uint8_t weekday = 0;
 
-        // влажность: можно среднюю, но для простоты берём последнее значение дня
         uint8_t hum = 0;
+
+        // FIX: сохраняем код погоды (для иконок)
+        // Берём первое валидное значение для дня.
+        bool hasCode = false;
+        int  weatherCode = 0;
     };
 
     Acc acc[FORECAST_MAX_DAYS] = {};
@@ -185,17 +183,24 @@ bool ForecastService::fetchForecast() {
         tm t{};
         localtime_r(&ts, &t);
 
-        // индекс дня относительно сегодня
         const int key = (t.tm_year * 400) + t.tm_yday;
         const int dayIndex = key - todayKey;
 
         if (dayIndex < 0 || dayIndex >= FORECAST_MAX_DAYS) {
-            continue; // не интересуют дни вне окна 0..4
+            continue;
         }
 
-        // температура
         const float temp = item["main"]["temp"] | NAN;
         const uint8_t hum = item["main"]["humidity"] | 0;
+
+        // FIX: weatherCode для иконки
+        // OpenWeather: weather[0].id
+        int wcode = 0;
+        JsonArray wArr = item["weather"];
+        if (!wArr.isNull() && wArr.size() > 0) {
+            JsonObject w0 = wArr[0];
+            wcode = w0["id"] | 0;
+        }
 
         // "день" = 09..18
         if (t.tm_hour >= 9 && t.tm_hour <= 18) {
@@ -209,15 +214,17 @@ bool ForecastService::fetchForecast() {
         acc[dayIndex].hum = hum;
         acc[dayIndex].used = true;
 
-        // первый раз для этого дня фиксируем:
-        // - weekday
-        // - dt полуночи (локальной!)
+        if (!acc[dayIndex].hasCode && wcode != 0) {
+            acc[dayIndex].hasCode = true;
+            acc[dayIndex].weatherCode = wcode;
+        }
+
         if (acc[dayIndex].dayMidnightDt == 0) {
             tm m = t;
             m.tm_hour = 0;
             m.tm_min  = 0;
             m.tm_sec  = 0;
-            time_t midnight = mktime(&m); // mktime работает в локальной TZ
+            time_t midnight = mktime(&m);
             acc[dayIndex].dayMidnightDt = (uint32_t)midnight;
             acc[dayIndex].weekday = (uint8_t)m.tm_wday;
         }
@@ -237,6 +244,9 @@ bool ForecastService::fetchForecast() {
         d.tempDay   = acc[i].dayCnt   ? (acc[i].daySum   / acc[i].dayCnt)   : NAN;
         d.tempNight = acc[i].nightCnt ? (acc[i].nightSum / acc[i].nightCnt) : NAN;
         d.humidity  = acc[i].hum;
+
+        // FIX: иконки
+        d.weatherCode = acc[i].hasCode ? acc[i].weatherCode : 800; // 800 = clear (fallback)
 
         _model.daysCount++;
         if (_model.daysCount >= FORECAST_MAX_DAYS) break;

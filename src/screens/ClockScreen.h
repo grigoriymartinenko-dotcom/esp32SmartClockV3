@@ -16,10 +16,15 @@
  * -----------
  * Главный экран часов.
  *
- * Экран:
- *  - наследуется от Screen (требует ThemeService)
- *  - использует NightTransitionService для плавного day/night
- *  - оптимизирует перерисовку по UiVersionService
+ * АРХИТЕКТУРА (ОБНОВЛЕНО):
+ *  - Экран НЕ знает про Day/Night
+ *  - Экран НЕ использует THEME_DAY / THEME_NIGHT
+ *  - Экран работает ТОЛЬКО с ThemeBlend
+ *
+ * Пайплайн:
+ *   k = nightTransition.value()
+ *   ThemeBlend th = themeService.interpolate(k)
+ *   draw(th)
  */
 
 class ClockScreen : public Screen {
@@ -56,6 +61,7 @@ private:
 
     bool     dhtDrawnOnce = false;
 
+    // fade HH:MM
     bool     fadeActive   = false;
     uint8_t  fadeStep     = 0;
 };

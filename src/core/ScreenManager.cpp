@@ -77,6 +77,7 @@ void ScreenManager::begin() {
 
     _current->begin();
 
+    // 🔑 При старте: системные элементы должны быть в консистентном состоянии
     if (wantStatus) {
         _statusBar->markDirty();
     } else {
@@ -84,7 +85,7 @@ void ScreenManager::begin() {
     }
 
     // BottomBar — legacy, больше не используется
-//_bottomBar->setVisible(false);
+    //_bottomBar->setVisible(false);
 
     _lastTimeVer   = _uiVersion->version(UiChannel::TIME);
     _lastThemeVer  = _uiVersion->version(UiChannel::THEME);
@@ -104,10 +105,11 @@ void ScreenManager::set(Screen& screen) {
 
     applyLayout();
     _current->begin();
-// 🔑 При смене экрана ButtonBar обязан перерисоваться
-if (_buttonBar) {
-    _buttonBar->markDirty();
-}
+
+    // 🔑 При смене экрана ButtonBar обязан перерисоваться
+    if (_buttonBar) {
+        _buttonBar->markDirty();
+    }
 
     if (wantStatus) {
         _statusBar->markDirty();
@@ -116,7 +118,8 @@ if (_buttonBar) {
     }
 
     // BottomBar — legacy, всегда выключен
-//_bottomBar->setVisible(false);
+    //_bottomBar->setVisible(false);
+
     _lastScreenVer = _uiVersion->version(UiChannel::SCREEN);
 }
 
@@ -140,7 +143,7 @@ void ScreenManager::update() {
     _current->update();
 
     // =========================================================
-    // 2️⃣ Потом системные разделители
+    // 2️⃣ Потом системные разделители (ДОЛЖНЫ обновляться)
     // =========================================================
     _sepStatus->update();
     _sepBottom->update();
@@ -148,21 +151,24 @@ void ScreenManager::update() {
     // =========================================================
     // 3️⃣ ПОСЛЕДНИМ — StatusBar (как overlay)
     // =========================================================
-if (wantStatus) {
+    if (wantStatus) {
 
-    if (_uiVersion->changed(UiChannel::TIME)) {
-        _statusBar->drawTimeOnly();   // ⬅️ ТОЛЬКО дата / день недели
+        // быстрый путь: обновить только строку времени/даты при смене TIME
+        if (_uiVersion->changed(UiChannel::TIME)) {
+            _statusBar->drawTimeOnly();
+        }
+
+        // при смене темы/экрана/вайфая нужно полное обновление статусбара
+        if (_uiVersion->changed(UiChannel::THEME) ||
+            _uiVersion->changed(UiChannel::SCREEN) ||
+            _uiVersion->changed(UiChannel::WIFI))
+        {
+            _statusBar->markDirty();
+        }
+
+        // 🔥 КЛЮЧЕВО: update() обязан вызываться, иначе WiFi/NTP “пропадают”
+        _statusBar->update();
     }
-
-    if (_uiVersion->changed(UiChannel::THEME) ||
-        _uiVersion->changed(UiChannel::SCREEN) ||
-        _uiVersion->changed(UiChannel::WIFI))
-    {
-        _statusBar->markDirty();
-    }
-
-    _statusBar->update();
-}
 
     // =========================================================
     // 4️⃣ И СОВСЕМ ПОСЛЕДНИМ — ButtonBar
