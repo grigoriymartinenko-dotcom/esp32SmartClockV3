@@ -24,6 +24,7 @@
 #include "services/PreferencesService.h"
 #include "services/WifiService.h"
 #include "services/NightTransitionService.h"
+
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
 
@@ -82,6 +83,7 @@ LayoutService layout(tft);
 // =====================================================
 UiVersionService uiVersion;
 NightTransitionService nightTransition;
+
 // =====================================================
 // SERVICES
 // =====================================================
@@ -117,7 +119,7 @@ StatusBar statusBar(
     tft,
     themeService,
     timeService,
-    wifi          // 🔹 ДОБАВЛЕНО
+    wifi
 );
 
 ButtonBar buttonBar(
@@ -199,6 +201,7 @@ AppController app(
 // SETUP
 // =====================================================
 void setup() {
+
     Serial.begin(115200);
     delay(500);
     Serial.println("BOOT");
@@ -245,10 +248,13 @@ void loop() {
 
     timeService.update();
     nightService.update(timeService);
+
+    nightTransition.update(); // пока не используется — задел на следующий шаг
+
     wifi.update();
     dht.update();
     connectivity.update();
-nightTransition.update();
+
     ButtonEvent e;
     while (buttons.poll(e)) {
         app.handleEvent(e);
