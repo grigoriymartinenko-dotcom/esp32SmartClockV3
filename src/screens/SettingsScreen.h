@@ -79,6 +79,9 @@ private:
     bool handleWifiLongOk();
     bool handleWifiLongBack();
 
+    // 👇 ДОБАВЛЕНО: применение Night mode
+    void applyNightSettings();
+
 private:
     Adafruit_ST7735&  _tft;
     LayoutService&    _layout;
@@ -98,6 +101,7 @@ private:
     int _selected    = 0;
     int _subSelected = 0;
 
+    // ===== Wi-Fi list =====
     int _wifiListTop      = 0;
     int _wifiListSelected = 0;
 
@@ -112,12 +116,7 @@ private:
         "0123456789"
         "_-@.!";
 
-    HintBtn _pressedBtn = HintBtn::NONE;
-    uint8_t _hintFlash  = 0;
-
-    bool  _needFullClear  = true;
-    Level _lastDrawnLevel = Level::ROOT;
-
+    // ===== Menu =====
     static constexpr MenuItem MENU[] = {
         { "Wi-Fi",      Level::WIFI     },
         { "Timezone",   Level::TIMEZONE },
@@ -126,9 +125,11 @@ private:
         { "About",      Level::ROOT     }
     };
 
+    // ===== Time =====
     TimeService::Mode _tmpTimeMode = TimeService::AUTO;
     TimeService::Mode _bakTimeMode = TimeService::AUTO;
 
+    // ===== Night =====
     NightService::Mode _tmpMode = NightService::Mode::AUTO;
     NightService::Mode _bakMode = NightService::Mode::AUTO;
 
@@ -140,6 +141,7 @@ private:
 
     static constexpr int NIGHT_STEP_MIN = 15;
 
+    // ===== Timezone =====
     int32_t _tmpTzSec  = 0;
     int32_t _bakTzSec  = 0;
 
@@ -150,14 +152,22 @@ private:
     static constexpr int32_t TZ_MIN  = -43200;
     static constexpr int32_t TZ_MAX  =  50400;
 
+    // ===== Wi-Fi enable =====
     bool _tmpWifiOn = true;
     bool _bakWifiOn = true;
 
+    // ===== Versions =====
     uint32_t _lastWifiListVersion  = 0;
     uint32_t _lastWifiStateVersion = 0;
 
-    // ===== UI CACHE FOR PARTIAL REDRAW =====
+    // ===== UI cache =====
     int _lastWifiListTop      = -1;
     int _lastWifiListSelected = -1;
     int _lastWifiNetCount     = -1;
+
+    HintBtn _pressedBtn = HintBtn::NONE;
+    uint8_t _hintFlash  = 0;
+
+    bool  _needFullClear  = true;
+    Level _lastDrawnLevel = Level::ROOT;
 };

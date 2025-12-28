@@ -61,38 +61,41 @@ void AppController::handleEvent(const ButtonEvent& e) {
     // =========================================================
     // SETTINGS
     // =========================================================
-    if (_active == ActiveScreen::SETTINGS) {
+    // =========================================================
+// SETTINGS
+// =========================================================
+if (_active == ActiveScreen::SETTINGS) {
 
-        if (e.type == ButtonEventType::SHORT_PRESS) {
-            Serial.println("[AppController] SHORT_PRESS in SETTINGS");
-            switch (e.id) {
-                case ButtonId::LEFT:  _settings.onShortLeft();  break;
-                case ButtonId::RIGHT: _settings.onShortRight(); break;
-                case ButtonId::OK:
-    Serial.println("[AppController] OK → SettingsScreen");
-    _settings.onShortOk();
-    break;
-                case ButtonId::BACK:  _settings.onShortBack();  break;
-            }
+    // -----------------------------------------------------
+    // LONG PRESS — всегда разрешены
+    // -----------------------------------------------------
+    if (e.type == ButtonEventType::LONG_PRESS) {
+        switch (e.id) {
+            case ButtonId::OK:   _settings.onLongOk();   break;
+            case ButtonId::BACK: _settings.onLongBack(); break;
+            default: break;
         }
-
-        if (e.type == ButtonEventType::LONG_PRESS) {
-            switch (e.id) {
-                case ButtonId::OK:   _settings.onLongOk();   break;
-                case ButtonId::BACK: _settings.onLongBack(); break;
-                default: break;
-            }
-        }
-
-        if (_settings.exitRequested()) {
-            _settings.clearExitRequest();
-            goClock();
-        }
-
-        return;
     }
 
-    // =========================================================
+    // -----------------------------------------------------
+    // SHORT PRESS — ТОЛЬКО если экран сам разрешает
+    // -----------------------------------------------------
+    if (e.type == ButtonEventType::SHORT_PRESS) {
+        switch (e.id) {
+            case ButtonId::LEFT:  _settings.onShortLeft();  break;
+            case ButtonId::RIGHT: _settings.onShortRight(); break;
+            case ButtonId::OK:    _settings.onShortOk();    break;
+            case ButtonId::BACK:  _settings.onShortBack();  break;
+        }
+    }
+
+    if (_settings.exitRequested()) {
+        _settings.clearExitRequest();
+        goClock();
+    }
+
+    return;
+}    // =========================================================
     // CLOCK
     // =========================================================
     if (_active == ActiveScreen::CLOCK) {

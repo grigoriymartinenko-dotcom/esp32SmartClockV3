@@ -89,10 +89,10 @@ NightTransitionService nightTransition;
 // =====================================================
 ThemeService themeService(uiVersion);
 TimeService  timeService(uiVersion);
-NightService nightService(uiVersion);
+
 
 PreferencesService prefs;
-
+NightService nightService(uiVersion, prefs);
 // ===== WIFI =====
 WifiService wifi(
     uiVersion,
@@ -118,6 +118,7 @@ RtcService rtc(
 StatusBar statusBar(
     tft,
     themeService,
+    nightTransition,
     timeService,
     wifi
 );
@@ -147,7 +148,7 @@ UiSeparator sepBottom(tft, themeService, layout);
 ClockScreen clockScreen(
     tft,
     timeService,
-    nightService,
+    nightTransition,   // ✅ ВОТ ОН
     themeService,
     layout,
     uiVersion,
@@ -247,9 +248,23 @@ void setup() {
 void loop() {
 
     timeService.update();
+
+    // NightService — единственная "истина": ночь сейчас или день.
+    // Он учитывает AUTO/ON/OFF и интервал.
     nightService.update(timeService);
 
-    nightTransition.update(); // пока не используется — задел на следующий шаг
+    // ---------------------------------------------------------------------
+    // Шаг 5 (NightTransition): делаем переход глобальным (для всех экранов).
+    //
+    // ВАЖНО:
+    //  - themeService.setNight(...) оставляем для совместимости со старыми экранами
+    //  - nightTransition.setTarget(...) задаёт ЦЕЛЬ для плавного перехода
+    //  - nightTransition.update() крутится ВСЕГДА, независимо от активного экрана
+    // ---------------------------------------------------------------------
+    const bool nightNow = nightService.isNight();
+    themeService.setNight(nightNow);        // жёсткое day/night (legacy)
+    nightTransition.setTarget(nightNow);    // цель для плавного коэффициента 0..1
+    nightTransition.update();               // переход обновляется каждый loop
 
     wifi.update();
     dht.update();

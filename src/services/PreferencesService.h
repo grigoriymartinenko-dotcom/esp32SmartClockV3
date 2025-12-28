@@ -26,12 +26,12 @@ struct __attribute__((packed)) PreferencesData {
     uint8_t  version;
 
     // ===== Night =====
-    uint8_t  nightMode;
-    uint16_t nightStart;
-    uint16_t nightEnd;
+    uint8_t  nightMode;     // NightModePref
+    uint16_t nightStart;    // minutes 0..1439
+    uint16_t nightEnd;      // minutes 0..1439
 
     // ===== Time =====
-    uint8_t  timeSource;
+    uint8_t  timeSource;    // TimeSourcePref
 
     // ===== Timezone =====
     int32_t  tzGmtOffset;
@@ -57,7 +57,19 @@ public:
 
     void begin();
 
-    // ===== Wi-Fi =====
+    // =================================================
+    // Night
+    // =================================================
+    NightModePref nightMode() const;
+    void setNightMode(NightModePref mode);
+
+    uint16_t nightStart() const;
+    uint16_t nightEnd() const;
+    void setNightAutoRange(uint16_t startMin, uint16_t endMin);
+
+    // =================================================
+    // Wi-Fi
+    // =================================================
     bool wifiEnabled() const;
     void setWifiEnabled(bool on);
 
@@ -68,12 +80,16 @@ public:
     void setWifiCredentials(const char* ssid, const char* pass);
     void clearWifiCredentials();
 
-    // ===== Timezone =====
-    int32_t tzGmtOffset() const;      // 🔥 ВОЗВРАЩЕНО
-    int32_t tzDstOffset() const;      // 🔥 ВОЗВРАЩЕНО
+    // =================================================
+    // Timezone
+    // =================================================
+    int32_t tzGmtOffset() const;
+    int32_t tzDstOffset() const;
     void setTimezone(int32_t gmt, int32_t dst);
 
-    // ===== Save =====
+    // =================================================
+    // Save / reset
+    // =================================================
     void save();
     void resetToDefaults();
 

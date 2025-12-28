@@ -3,16 +3,22 @@
 
 #include "services/UiVersionService.h"
 #include "services/TimeService.h"
+#include "services/PreferencesService.h"
 
 /*
  * NightService
  * ------------
- * Night Mode:
- *  - AUTO: ночь по пользовательскому интервалу времени
- *  - ON:   всегда ночь
- *  - OFF:  всегда день
+ * Истина ночного режима.
  *
- * Истина ОДНА: NightService решает, ночь сейчас или нет.
+ * Отвечает за:
+ *  - AUTO / ON / OFF
+ *  - интервал ночи
+ *  - вычисление isNight()
+ *
+ * НЕ:
+ *  - не рисует
+ *  - не знает про UI
+ *
  * Любая смена состояния → UiChannel::THEME
  */
 
@@ -24,7 +30,10 @@ public:
         OFF
     };
 
-    explicit NightService(UiVersionService& uiVersion);
+    NightService(
+        UiVersionService& uiVersion,
+        PreferencesService& prefs
+    );
 
     void begin();
 
@@ -48,11 +57,12 @@ private:
     bool computeAutoNight(const TimeService& time) const;
 
 private:
-    UiVersionService& _uiVersion;
+    UiVersionService&    _uiVersion;
+    PreferencesService& _prefs;
 
     Mode _mode = Mode::AUTO;
 
-    // дефолт: 22:00 → 06:00
+    // дефолт (используется только если EEPROM пуст)
     int _autoStartMin = 22 * 60;
     int _autoEndMin   = 6 * 60;
 

@@ -4,6 +4,7 @@
 #include "services/ThemeService.h"
 #include "services/TimeService.h"
 #include "services/WifiService.h"
+#include "services/NightTransitionService.h"
 
 /*
  * StatusBar
@@ -17,11 +18,11 @@
  *  - НЕТ таймеров
  *  - НЕТ millis()
  *  - НЕТ логики времени
- *  - НЕТ полной перерисовки по TIME-тику
+ *  - НЕТ if (night)
  *
  * КЛЮЧ:
- *  - Статический слой рисуется РЕДКО
- *  - Строка даты рисуется ТОЛЬКО если реально изменилась
+ *  - Цвета всегда получаются через blend565()
+ *  - NightTransitionService даёт ТОЛЬКО коэффициент (value)
  */
 class StatusBar {
 public:
@@ -37,6 +38,7 @@ public:
     StatusBar(
         Adafruit_ST7735& tft,
         ThemeService& theme,
+        NightTransitionService& nightTransition,
         TimeService& time,
         WifiService& wifi
     );
@@ -55,14 +57,15 @@ private:
     // --- helpers ---
     Status mapWifiStatus() const;
     Status mapTimeStatus() const;
-    uint16_t statusDotColor(Status s, const Theme& th) const;
+    uint16_t statusDotColor(Status s) const;
     const char* weekdayEnFromTm(const tm& t) const;
 
 private:
-    Adafruit_ST7735& _tft;
-    ThemeService&    _theme;
-    TimeService&     _time;
-    WifiService&     _wifi;
+    Adafruit_ST7735&       _tft;
+    ThemeService&          _theme;
+    NightTransitionService& _night;
+    TimeService&           _time;
+    WifiService&           _wifi;
 
     Status _wifiSt = OFFLINE;
     Status _timeSt = OFFLINE;

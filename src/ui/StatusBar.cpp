@@ -5,14 +5,17 @@
 // ============================================================================
 // ctor
 // ============================================================================
+
 StatusBar::StatusBar(
     Adafruit_ST7735& tft,
     ThemeService& theme,
+    NightTransitionService& nightTransition,
     TimeService& time,
     WifiService& wifi
 )
 : _tft(tft)
 , _theme(theme)
+, _night(nightTransition)
 , _time(time)
 , _wifi(wifi)
 {}
@@ -20,11 +23,13 @@ StatusBar::StatusBar(
 // ============================================================================
 // public API
 // ============================================================================
+
 void StatusBar::markDirty() {
     _dirty = true;
 }
 
 // ---------------------------------------------------------------------------
+
 void StatusBar::update() {
 
     Status newWifi = mapWifiStatus();
@@ -32,15 +37,20 @@ void StatusBar::update() {
 
     const Theme& th = _theme.current();
 
-    // Перерисовываем СТАТИЧЕСКИЙ слой
-    // ТОЛЬКО если реально что-то изменилось
+    // Фон тоже может плавно меняться → учитываем
+    uint16_t blendedBg = ThemeService::blend565(
+        THEME_DAY.bg,
+        THEME_NIGHT.bg,
+        _night.value()
+    );
+
     if (newWifi != _wifiSt ||
         newTime != _timeSt ||
-        th.bg != _lastBg)
+        blendedBg != _lastBg)
     {
         _wifiSt = newWifi;
         _timeSt = newTime;
-        _lastBg = th.bg;
+        _lastBg = blendedBg;
         _dirty = true;
     }
 
@@ -53,27 +63,34 @@ void StatusBar::update() {
 // ============================================================================
 // static layer (редко)
 // ============================================================================
+
 void StatusBar::drawStatic() {
 
-    const Theme& th = _theme.current();
+    const Theme& day   = THEME_DAY;
+    const Theme& night = THEME_NIGHT;
+
+    float k = _night.value();
+
+    uint16_t bg = ThemeService::blend565(day.bg, night.bg, k);
 
     _tft.setFont(nullptr);
     _tft.setTextSize(1);
     _tft.setTextWrap(false);
 
-    // Фон статусбара
-    _tft.fillRect(0, 0, _tft.width(), HEIGHT, th.bg);
+    // --- фон ---
+    _tft.fillRect(0, 0, _tft.width(), HEIGHT, bg);
 
     const int Y1 = 4;
     const int Y2 = 14;
     const int DOT_X = 4;
 
     // --- точки статуса ---
-    drawDot(DOT_X, Y1 + 4, statusDotColor(_wifiSt, th));
-    drawDot(DOT_X, Y2 + 4, statusDotColor(_timeSt, th));
+    drawDot(DOT_X, Y1 + 4, statusDotColor(_wifiSt));
+    drawDot(DOT_X, Y2 + 4, statusDotColor(_timeSt));
 
     // --- подписи ---
-    _tft.setTextColor(th.muted, th.bg);
+    uint16_t muted = ThemeService::blend565(day.muted, night.muted, k);
+    _tft.setTextColor(muted, bg);
 
     _tft.setCursor(10, Y1);
     _tft.print("WiFi");
@@ -84,14 +101,14 @@ void StatusBar::drawStatic() {
         (_time.source() == TimeService::RTC) ? "RTC" : "---"
     );
 
-    // При полной перерисовке
-    // принудительно сбрасываем кэш даты
+    // сбрасываем кэш даты
     _lastTimeStr[0] = '\0';
 }
 
 // ============================================================================
 // dynamic layer (TIME only)
 // ============================================================================
+
 void StatusBar::drawTimeOnly() {
 
     if (!_time.isValid()) return;
@@ -99,7 +116,6 @@ void StatusBar::drawTimeOnly() {
     tm t{};
     if (!_time.getTm(t)) return;
 
-    // Формируем СТРОКУ ЦЕЛИКОМ
     char buf[32];
     snprintf(
         buf,
@@ -111,25 +127,25 @@ void StatusBar::drawTimeOnly() {
         t.tm_year + 1900
     );
 
-    // 🔑 КЛЮЧЕВОЙ МОМЕНТ:
-    // если строка НЕ изменилась — НИЧЕГО НЕ РИСУЕМ
     if (strcmp(buf, _lastTimeStr) == 0)
         return;
 
     strcpy(_lastTimeStr, buf);
 
-    const Theme& th = _theme.current();
+    const Theme& day   = THEME_DAY;
+    const Theme& night = THEME_NIGHT;
+    float k = _night.value();
 
-    // ------------------------------
-    // ФИКСИРОВАННАЯ ОБЛАСТЬ
-    // ------------------------------
-    static constexpr int TIME_X = 42;   // 60 - (3 * 6) = 42
+    uint16_t bg    = ThemeService::blend565(day.bg,    night.bg,    k);
+    uint16_t text  = ThemeService::blend565(day.muted, night.muted, k);
+
+    static constexpr int TIME_X = 42;
     static constexpr int TIME_Y = 4;
     static constexpr int TIME_W = 120;
     static constexpr int TIME_H = 8;
 
-    _tft.fillRect(TIME_X, TIME_Y, TIME_W, TIME_H, th.bg);
-    _tft.setTextColor(th.muted, th.bg);
+    _tft.fillRect(TIME_X, TIME_Y, TIME_W, TIME_H, bg);
+    _tft.setTextColor(text, bg);
     _tft.setCursor(TIME_X, TIME_Y);
     _tft.print(buf);
 }
@@ -137,6 +153,7 @@ void StatusBar::drawTimeOnly() {
 // ============================================================================
 // helpers
 // ============================================================================
+
 StatusBar::Status StatusBar::mapWifiStatus() const {
     if (!_wifi.isEnabled())
         return OFFLINE;
@@ -155,24 +172,36 @@ StatusBar::Status StatusBar::mapTimeStatus() const {
 }
 
 // ---------------------------------------------------------------------------
-uint16_t StatusBar::statusDotColor(Status s, const Theme& th) const {
+
+uint16_t StatusBar::statusDotColor(Status s) const {
+
+    const Theme& day   = THEME_DAY;
+    const Theme& night = THEME_NIGHT;
+    float k = _night.value();
+
     switch (s) {
-        case ONLINE:     return th.textSecondary;
-        case CONNECTING: return th.accent;
-        case ERROR:      return th.error;
+        case ONLINE:
+            return ThemeService::blend565(day.textSecondary, night.textSecondary, k);
+        case CONNECTING:
+            return ThemeService::blend565(day.accent, night.accent, k);
+        case ERROR:
+            return ThemeService::blend565(day.error, night.error, k);
         case OFFLINE:
-        default:         return th.muted;
+        default:
+            return ThemeService::blend565(day.muted, night.muted, k);
     }
 }
 
 // ---------------------------------------------------------------------------
+
 void StatusBar::drawDot(int cx, int cy, uint16_t color) {
     _tft.fillCircle(cx, cy, 2, color);
 }
 
 // ---------------------------------------------------------------------------
-// Weekday names (EN, fixed width, no allocations)
+// Weekday names
 // ---------------------------------------------------------------------------
+
 const char* StatusBar::weekdayEnFromTm(const tm& t) const {
 
     static const char* NAMES[] = {

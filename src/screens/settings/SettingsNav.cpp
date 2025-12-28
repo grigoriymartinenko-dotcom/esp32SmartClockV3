@@ -72,8 +72,29 @@ void SettingsScreen::navLeft() {
         }
 
         // ------------------------------------------------------------
-        // Остальные экраны пока не трогаем
+        // NIGHT (Mode / Start / End)
         // ------------------------------------------------------------
+        case Level::NIGHT: {
+            _subSelected = clampI(_subSelected - 1, 0, 2);
+            break;
+        }
+
+        // ------------------------------------------------------------
+        // TIME (пока одна строка)
+        // ------------------------------------------------------------
+        case Level::TIME: {
+            _subSelected = 0;
+            break;
+        }
+
+        // ------------------------------------------------------------
+        // TIMEZONE (TZ / DST)
+        // ------------------------------------------------------------
+        case Level::TIMEZONE: {
+            _subSelected = clampI(_subSelected - 1, 0, 1);
+            break;
+        }
+
         default:
             break;
     }
@@ -129,9 +150,51 @@ void SettingsScreen::navRight() {
             break;
         }
 
+        // ------------------------------------------------------------
+        // NIGHT (Mode / Start / End)
+        // ------------------------------------------------------------
+        case Level::NIGHT: {
+            _subSelected = clampI(_subSelected + 1, 0, 2);
+            break;
+        }
+
+        // ------------------------------------------------------------
+        // TIME (пока одна строка)
+        // ------------------------------------------------------------
+        case Level::TIME: {
+            _subSelected = 0;
+            break;
+        }
+
+        // ------------------------------------------------------------
+        // TIMEZONE (TZ / DST)
+        // ------------------------------------------------------------
+        case Level::TIMEZONE: {
+            _subSelected = clampI(_subSelected + 1, 0, 1);
+            break;
+        }
+
         default:
             break;
     }
 
     _dirty = true;
+}
+
+// ============================================================================
+// BUTTON BAR CONTEXT
+// ============================================================================
+void SettingsScreen::updateButtonBarContext() {
+
+    if (_mode == UiMode::NAV) {
+        _buttons.setLabels("<", "OK", ">", "BACK");
+        _buttons.setActions(true, true, true, true);
+        _buttons.setHighlight(false, false, false, false);
+    } else {
+        _buttons.setLabels("-", "OK+", "+", "BACK+");
+        _buttons.setActions(true, true, true, true);
+        _buttons.setHighlight(false, true, false, false);
+    }
+
+    _buttons.markDirty();
 }

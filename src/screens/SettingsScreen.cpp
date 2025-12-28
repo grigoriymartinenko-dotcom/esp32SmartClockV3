@@ -51,18 +51,26 @@ void SettingsScreen::begin() {
     _wifiPassLen = 0;
     _wifiCharIdx = 0;
 
-    // зафиксировать стартовые версии
+    // ===== Night: загрузка из сервиса (уже из EEPROM) =====
+    _bakMode = _night.mode();
+    _tmpMode = _bakMode;
+
+    _bakNightStart = _night.autoStart();
+    _bakNightEnd   = _night.autoEnd();
+
+    _tmpNightStart = _bakNightStart;
+    _tmpNightEnd   = _bakNightEnd;
+
+    // versions
     _lastWifiListVersion  = _wifi.listVersion();
     _lastWifiStateVersion = _wifi.stateVersion();
 
     updateButtonBarContext();
+    _buttons.markDirty();
 
     _needFullClear  = true;
     _dirty          = true;
     _lastDrawnLevel = _level;
-
-    // гарантируем перерисовку кнопок после full clear
-    _buttons.markDirty();
 
     _ui.bump(UiChannel::SCREEN);
 }
@@ -90,21 +98,13 @@ void SettingsScreen::update() {
 }
 
 // ============================================================================
-// BUTTONS
+// BUTTON HANDLERS
 // ============================================================================
 void SettingsScreen::onShortLeft() {
     _pressedBtn = HintBtn::LEFT;
     _hintFlash  = 3;
 
-    if (_level == Level::WIFI_PASSWORD) {
-        const size_t n = strlen(PASS_CHARS);
-        _wifiCharIdx = (_wifiCharIdx == 0)
-            ? (int)(n - 1)
-            : (_wifiCharIdx - 1);
-        _dirty = true;
-        return;
-    }
-
+    if (_mode == UiMode::EDIT) { editDec(); return; }
     navLeft();
 }
 
@@ -112,13 +112,7 @@ void SettingsScreen::onShortRight() {
     _pressedBtn = HintBtn::RIGHT;
     _hintFlash  = 3;
 
-    if (_level == Level::WIFI_PASSWORD) {
-        const size_t n = strlen(PASS_CHARS);
-        _wifiCharIdx = (int)((_wifiCharIdx + 1) % (int)n);
-        _dirty = true;
-        return;
-    }
-
+    if (_mode == UiMode::EDIT) { editInc(); return; }
     navRight();
 }
 
@@ -131,8 +125,10 @@ void SettingsScreen::onShortOk() {
         return;
     }
 
-    if (handleWifiShortOk())
+    if (_mode == UiMode::NAV) {
+        enterEdit();
         return;
+    }
 
     _dirty = true;
 }
@@ -153,13 +149,44 @@ void SettingsScreen::onShortBack() {
 }
 
 void SettingsScreen::onLongOk() {
-    if (handleWifiLongOk())
+
+    if (_mode == UiMode::EDIT) {
+
+        // =========================
+        // APPLY NIGHT SETTINGS
+        // =========================
+        if (_level == Level::NIGHT) {
+
+            _night.setMode(_tmpMode);
+
+            if (_tmpMode == NightService::Mode::AUTO) {
+                _night.setAutoRange(_tmpNightStart, _tmpNightEnd);
+            }
+
+            prefs.setNightMode((NightModePref)_tmpMode);
+            prefs.setNightAutoRange(_tmpNightStart, _tmpNightEnd);
+            prefs.save();
+
+            _ui.bump(UiChannel::THEME);
+        }
+
+        exitEdit(true);
         return;
+    }
 }
 
 void SettingsScreen::onLongBack() {
+
+    if (_mode == UiMode::EDIT) {
+        exitEdit(false);   // ❌ CANCEL
+        _buttons.markDirty();
+        return;
+    }
+
     if (handleWifiLongBack())
         return;
+
+    enterSubmenu(Level::ROOT);
 }
 
 // ============================================================================
@@ -194,36 +221,31 @@ void SettingsScreen::enterSubmenu(Level lvl) {
     _mode  = UiMode::NAV;
     _subSelected = 0;
 
+    // ===== при входе в Night — перечитываем актуальные =====
+    if (_level == Level::NIGHT) {
+        _bakMode = _night.mode();
+        _tmpMode = _bakMode;
+
+        _bakNightStart = _night.autoStart();
+        _bakNightEnd   = _night.autoEnd();
+
+        _tmpNightStart = _bakNightStart;
+        _tmpNightEnd   = _bakNightEnd;
+    }
+
     _needFullClear = true;
     _dirty         = true;
 
-    // сброс кешей partial redraw Wi-Fi list
     _lastWifiListTop      = -1;
     _lastWifiListSelected = -1;
     _lastWifiNetCount     = -1;
 
-    // важно: после полного клира кнопки должны перерисоваться
+    updateButtonBarContext();
     _buttons.markDirty();
 }
 
-void SettingsScreen::exitSubmenu(bool /*apply*/) {
-    enterSubmenu(Level::ROOT);
-}
-
 // ============================================================================
-// BUTTON BAR
+// EDIT MODE
 // ============================================================================
-void SettingsScreen::updateButtonBarContext() {
 
-    if (_mode == UiMode::NAV) {
-        _buttons.setLabels("<", "OK", ">", "BACK");
-        _buttons.setActions(true, true, true, true);
-        _buttons.setHighlight(false, false, false, false);
-    } else {
-        _buttons.setLabels("-", "OK+", "+", "BACK+");
-        _buttons.setActions(true, true, true, true);
-        _buttons.setHighlight(false, true, false, false);
-    }
 
-    _buttons.markDirty();
-}

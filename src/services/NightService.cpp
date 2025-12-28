@@ -1,21 +1,47 @@
 #include "services/NightService.h"
 
-NightService::NightService(UiVersionService& uiVersion)
+// ============================================================================
+// ctor
+// ============================================================================
+NightService::NightService(
+    UiVersionService& uiVersion,
+    PreferencesService& prefs
+)
     : _uiVersion(uiVersion)
+    , _prefs(prefs)
 {
 }
 
+// ============================================================================
+// begin — ВАЖНО!
+// ============================================================================
 void NightService::begin() {
-    _mode = Mode::AUTO;
-    _autoStartMin = 22 * 60;
-    _autoEndMin   = 6 * 60;
+
+    // ===== LOAD FROM EEPROM =====
+    _mode = static_cast<Mode>(_prefs.nightMode());
+
+    _autoStartMin = _prefs.nightStart();
+    _autoEndMin   = _prefs.nightEnd();
+
+    // защита от мусора
+    if (_autoStartMin < 0 || _autoStartMin > 1439)
+        _autoStartMin = 22 * 60;
+
+    if (_autoEndMin < 0 || _autoEndMin > 1439)
+        _autoEndMin = 6 * 60;
+
     _isNight = false;
+
+    // логическое событие
+    _uiVersion.bump(UiChannel::THEME);
 }
 
+// ============================================================================
+// MODE
+// ============================================================================
 void NightService::setMode(Mode m) {
-
-    
-    if (_mode == m) return;
+    if (_mode == m)
+        return;
 
     _mode = m;
     _uiVersion.bump(UiChannel::THEME);
@@ -25,11 +51,13 @@ NightService::Mode NightService::mode() const {
     return _mode;
 }
 
+// ============================================================================
+// AUTO RANGE
+// ============================================================================
 void NightService::setAutoRange(int startMin, int endMin) {
-    if (startMin < 0) startMin = 0;
-    if (startMin > 1439) startMin = 1439;
-    if (endMin < 0) endMin = 0;
-    if (endMin > 1439) endMin = 1439;
+
+    startMin = constrain(startMin, 0, 1439);
+    endMin   = constrain(endMin,   0, 1439);
 
     if (_autoStartMin == startMin && _autoEndMin == endMin)
         return;
@@ -50,10 +78,16 @@ int NightService::autoEnd() const {
     return _autoEndMin;
 }
 
+// ============================================================================
+// RESULT
+// ============================================================================
 bool NightService::isNight() const {
     return _isNight;
 }
 
+// ============================================================================
+// UPDATE
+// ============================================================================
 void NightService::update(const TimeService& time) {
 
     bool night = false;
@@ -78,6 +112,9 @@ void NightService::update(const TimeService& time) {
     }
 }
 
+// ============================================================================
+// AUTO LOGIC
+// ============================================================================
 bool NightService::computeAutoNight(const TimeService& time) const {
 
     if (!time.isValid())
@@ -90,6 +127,6 @@ bool NightService::computeAutoNight(const TimeService& time) const {
         return (nowMin >= _autoStartMin) && (nowMin < _autoEndMin);
     }
 
-    // интервал через полночь (22:00 → 06:00)
+    // через полночь (22:00 → 06:00)
     return (nowMin >= _autoStartMin) || (nowMin < _autoEndMin);
 }

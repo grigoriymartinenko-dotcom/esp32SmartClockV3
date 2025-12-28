@@ -49,6 +49,15 @@ static void formatOffsetHM(int32_t sec, char* out, size_t outSz) {
     snprintf(out, outSz, "%c%02d:%02d", sign, s / 3600, (s % 3600) / 60);
 }
 
+// формат HH:MM из минут (0..1439)
+static void formatHMFromMin(int minutes, char* out, size_t outSz) {
+    if (minutes < 0) minutes = 0;
+    if (minutes > 1439) minutes = 1439;
+    int hh = minutes / 60;
+    int mm = minutes % 60;
+    snprintf(out, outSz, "%02d:%02d", hh, mm);
+}
+
 // ============================================================================
 // Wi-Fi RSSI bars (UI responsibility)
 // ============================================================================
@@ -142,7 +151,6 @@ void SettingsScreen::drawRoot() {
     _tft.setTextSize(1);
 
     int top    = y0 + 28;
-    int bottom = _layout.buttonBarY();
     int count  = sizeof(MENU) / sizeof(MENU[0]);
     constexpr int rowH = 12;
 
@@ -338,32 +346,134 @@ void SettingsScreen::drawWifiPassword() {
 void SettingsScreen::drawTime() {
     const Theme& th = theme();
     const int y0 = STATUSBAR_H;
+
     _tft.setFont(nullptr);
     _tft.setTextWrap(false);
     _tft.setTextSize(2);
     _tft.setCursor(40, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Time");
+
+    // (здесь позже сделаем как Night: поля + highlight)
 }
 
+// ============================================================================
+// NIGHT MODE — FULL UI + EDIT HIGHLIGHT
+// ============================================================================
+// ============================================================================
+// NIGHT MODE
+// ============================================================================
 void SettingsScreen::drawNight() {
+
     const Theme& th = theme();
     const int y0 = STATUSBAR_H;
+
+    // ------------------------------------------------------------------------
+    // TITLE
+    // ------------------------------------------------------------------------
     _tft.setFont(nullptr);
     _tft.setTextWrap(false);
     _tft.setTextSize(2);
-    _tft.setCursor(24, y0 + 6);
+    _tft.setCursor(20, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Night mode");
+
+    // ------------------------------------------------------------------------
+    // LIST
+    // ------------------------------------------------------------------------
+    _tft.setTextSize(1);
+
+    constexpr int ROW_H = 14;
+    int top = y0 + 30;
+
+    // ---------- Row 0: Mode ----------
+    {
+        bool selected = (_subSelected == 0);
+        bool editing  = selected && (_mode == UiMode::EDIT);
+
+        uint16_t color = editing
+            ? th.warn        // 🔴 EDIT = RED
+            : (selected ? th.select : th.textPrimary);
+
+        _tft.fillRect(0, top, _tft.width(), ROW_H, th.bg);
+        _tft.setTextColor(color, th.bg);
+        _tft.setCursor(10, top + 3);
+        _tft.print("> Mode: ");
+
+        switch (_tmpMode) {
+            case NightService::Mode::AUTO: _tft.print("AUTO"); break;
+            case NightService::Mode::ON:   _tft.print("ON");   break;
+            case NightService::Mode::OFF:  _tft.print("OFF");  break;
+        }
+    }
+
+    // ---------- Row 1: Start ----------
+    {
+        int y = top + ROW_H;
+        bool enabled  = (_tmpMode == NightService::Mode::AUTO);
+        bool selected = (_subSelected == 1);
+        bool editing  = selected && (_mode == UiMode::EDIT);
+
+        uint16_t color =
+            !enabled ? th.muted :
+            editing  ? th.warn :
+            selected ? th.select :
+                       th.textPrimary;
+
+        _tft.fillRect(0, y, _tft.width(), ROW_H, th.bg);
+        _tft.setTextColor(color, th.bg);
+        _tft.setCursor(10, y + 3);
+        _tft.print("  Start: ");
+
+        char buf[6];
+        snprintf(buf, sizeof(buf), "%02d:%02d",
+                 _tmpNightStart / 60,
+                 _tmpNightStart % 60);
+        _tft.print(buf);
+    }
+
+    // ---------- Row 2: End ----------
+    {
+        int y = top + ROW_H * 2;
+        bool enabled  = (_tmpMode == NightService::Mode::AUTO);
+        bool selected = (_subSelected == 2);
+        bool editing  = selected && (_mode == UiMode::EDIT);
+
+        uint16_t color =
+            !enabled ? th.muted :
+            editing  ? th.warn :
+            selected ? th.select :
+                       th.textPrimary;
+
+        _tft.fillRect(0, y, _tft.width(), ROW_H, th.bg);
+        _tft.setTextColor(color, th.bg);
+        _tft.setCursor(10, y + 3);
+        _tft.print("  End:   ");
+
+        char buf[6];
+        snprintf(buf, sizeof(buf), "%02d:%02d",
+                 _tmpNightEnd / 60,
+                 _tmpNightEnd % 60);
+        _tft.print(buf);
+    }
+
+    // ------------------------------------------------------------------------
+    // ❌ НИКАКИХ ПОДПИСЕЙ КНОПОК ТУТ БОЛЬШЕ НЕТ
+    // ButtonBar — единственный источник кнопок
+    // ------------------------------------------------------------------------
 }
 
+// ============================================================================
 void SettingsScreen::drawTimezone() {
     const Theme& th = theme();
     const int y0 = STATUSBAR_H;
+
     _tft.setFont(nullptr);
     _tft.setTextWrap(false);
     _tft.setTextSize(2);
     _tft.setCursor(18, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Timezone");
+
+    // (позже сделаем как Night: поля + highlight)
 }
