@@ -1,14 +1,37 @@
 #include "services/NightTransitionService.h"
 
+#include <math.h>
+
 // ============================================================================
 // ctor
 // ============================================================================
 
 NightTransitionService::NightTransitionService()
     : _targetNight(false)
-    , _factor(0.0f)
+    , _t(0.0f)
     , _lastMs(0)
+    , _dirty(true)   // чтобы первый кадр гарантированно отрисовался
+    , _lastQ(255)    // заведомо "не равно" quantize8(0.0)
 {
+}
+
+// ============================================================================
+// helpers
+// ============================================================================
+
+float NightTransitionService::smoothstep(float t) {
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+uint8_t NightTransitionService::quantize8(float t) {
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    int v = (int)lroundf(t * 255.0f);
+    if (v < 0) v = 0;
+    if (v > 255) v = 255;
+    return (uint8_t)v;
 }
 
 // ============================================================================
@@ -17,37 +40,50 @@ NightTransitionService::NightTransitionService()
 
 void NightTransitionService::setTarget(bool night) {
     _targetNight = night;
+    // Само по себе изменение цели не означает, что value() изменилось,
+    // поэтому dirty тут НЕ ставим. dirty ставится в update() при реальном
+    // изменении t/value.
 }
 
 void NightTransitionService::update() {
-    uint32_t now = millis();
+    const uint32_t now = millis();
 
-    // Первый вызов — просто инициализируем таймер,
-    // чтобы не было скачка.
+    // Первый вызов: просто инициализируем таймер.
     if (_lastMs == 0) {
         _lastMs = now;
+        _dirty = true;          // первый кадр/итерация
+        _lastQ = quantize8(value());
         return;
     }
 
-    uint32_t dt = now - _lastMs;
+    uint32_t dtMs = now - _lastMs;
     _lastMs = now;
 
-    // На сколько меняем коэффициент за этот кадр
-    float delta = dt * SPEED;
+    // Страховка: если dt вдруг огромный (пауза/зависание),
+    // ограничим шаг, чтобы не "телепортировать" переход.
+    if (dtMs > 250) dtMs = 250;
 
+    const float prevValue = value();
+
+    // Линейно двигаем t к цели.
     if (_targetNight) {
-        // Движемся к ночи
-        _factor += delta;
-        if (_factor > 1.0f) {
-            _factor = 1.0f;
-        }
+        _t += (float)dtMs * SPEED;
+        if (_t >= 1.0f - SNAP_EPS) _t = 1.0f;
     } else {
-        // Движемся к дню
-        _factor -= delta;
-        if (_factor < 0.0f) {
-            _factor = 0.0f;
-        }
+        _t -= (float)dtMs * SPEED;
+        if (_t <= 0.0f + SNAP_EPS) _t = 0.0f;
     }
+
+    // Dirty-логика: считаем "заметным" изменение по квантованию 0..255
+    // уже после easing. Это ближе к тому, как глаз видит изменение.
+    const float curValue = value();
+    const uint8_t q = quantize8(curValue);
+
+    // dirty если:
+    //  - поменялся квант
+    //  - или это самый первый апдейт/кадр
+    _dirty = (q != _lastQ) || (prevValue != curValue);
+    _lastQ = q;
 }
 
 // ============================================================================
@@ -55,18 +91,32 @@ void NightTransitionService::update() {
 // ============================================================================
 
 bool NightTransitionService::transitioning() const {
-    // Переход активен, если:
-    //  - идём в ночь, но ещё не дошли до 1.0
-    //  - идём в день, но ещё не дошли до 0.0
-    return (_targetNight && _factor < 1.0f)
-        || (!_targetNight && _factor > 0.0f);
+    return (_targetNight && _t < 1.0f)
+        || (!_targetNight && _t > 0.0f);
+}
+
+bool NightTransitionService::dirty() const {
+    return _dirty;
+}
+
+void NightTransitionService::clearDirty() {
+    _dirty = false;
+}
+
+bool NightTransitionService::targetNight() const {
+    return _targetNight;
+}
+
+float NightTransitionService::rawFactor() const {
+    return _t;
 }
 
 float NightTransitionService::nightFactor() const {
-    return _factor;
+    // Для семантики и обратной совместимости.
+    return value();
 }
 
 float NightTransitionService::value() const {
-    // Универсальный коэффициент для blend'а
-    return _factor;
+    // Визуальный easing
+    return smoothstep(_t);
 }
