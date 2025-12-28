@@ -1,7 +1,9 @@
 #pragma once
+
 #include <Adafruit_ST7735.h>
 
 #include "core/Screen.h"
+
 #include "services/TimeService.h"
 #include "services/NightTransitionService.h"
 #include "services/ThemeService.h"
@@ -14,31 +16,27 @@
  * -----------
  * Главный экран часов.
  *
- * ПРАВИЛА:
- *  - НЕТ if (night)
- *  - НЕТ своей логики day/night
- *  - НЕТ локального blend
- *
- * ВСЕ цвета вычисляются через:
- *   ThemeService::blend565(..., nightTransition.value())
+ * Экран:
+ *  - наследуется от Screen (требует ThemeService)
+ *  - использует NightTransitionService для плавного day/night
+ *  - оптимизирует перерисовку по UiVersionService
  */
 
 class ClockScreen : public Screen {
 public:
     ClockScreen(
-        Adafruit_ST7735& tft,
-        TimeService& timeService,
+        Adafruit_ST7735&        tft,
+        TimeService&            timeService,
         NightTransitionService& nightTransition,
-        ThemeService& themeService,
-        LayoutService& layoutService,
-        UiVersionService& uiVersion,
-        DhtService& dhtService
+        ThemeService&           themeService,
+        LayoutService&          layoutService,
+        UiVersionService&       uiVersion,
+        DhtService&             dhtService
     );
 
+    // Screen interface
     void begin() override;
     void update() override;
-
-    bool hasStatusBar() const override { return true; }
 
 private:
     void drawTime(bool force);
@@ -52,12 +50,12 @@ private:
     UiVersionService&       uiVersion;
     DhtService&             dht;
 
-    uint32_t lastTimeV   = 0;
-    uint32_t lastScreenV = 0;
-    uint32_t lastDhtV    = 0;
+    uint32_t lastTimeV    = 0;
+    uint32_t lastDhtV     = 0;
+    uint32_t lastScreenV  = 0;
 
     bool     dhtDrawnOnce = false;
 
-    uint8_t  fadeStep   = 0;
-    bool     fadeActive = false;
+    bool     fadeActive   = false;
+    uint8_t  fadeStep     = 0;
 };

@@ -30,7 +30,7 @@ ClockScreen::ClockScreen(
     UiVersionService& uiVer,
     DhtService& dhtService
 )
-    : Screen(themeService)
+    : Screen(themeService)          // 🔥 КЛЮЧЕВОЙ ФИКС
     , tft(t)
     , time(timeService)
     , night(nightTransition)
@@ -47,8 +47,9 @@ void ClockScreen::begin() {
     uint32_t sv = uiVersion.version(UiChannel::SCREEN);
     if (sv != lastScreenV) {
         lastScreenV = sv;
-        fadeActive = true;
-        fadeStep = 0;
+
+        fadeActive = !night.transitioning();
+        fadeStep   = 0;
     }
 
     const float k = night.value();
@@ -76,6 +77,14 @@ void ClockScreen::begin() {
 // update
 // =====================================================
 void ClockScreen::update() {
+
+    // ===== NIGHT TRANSITION =====
+    if (night.dirty()) {
+        night.clearDirty();
+        drawTime(true);
+        drawDht(true);
+        return;
+    }
 
     // ===== FADE HH:MM =====
     if (fadeActive) {
@@ -112,10 +121,10 @@ void ClockScreen::drawTime(bool force) {
 
     const float k = night.value();
 
-    uint8_t a = 255;
+    float fadeK = 1.0f;
     if (fadeActive) {
-        uint16_t t = (uint16_t)fadeStep * 255 / FADE_STEPS;
-        a = (t * t) / 255;
+        float t = (float)fadeStep / (float)FADE_STEPS;
+        fadeK = t * t;
     }
 
     const uint16_t bg = ThemeService::blend565(
@@ -136,8 +145,8 @@ void ClockScreen::drawTime(bool force) {
         k
     );
 
-    tft.setFont(nullptr);
-    tft.setTextWrap(false);
+    const uint16_t timeColor =
+        ThemeService::blend565(muted, text, fadeK);
 
     const int h = time.hour();
     const int m = time.minute();
@@ -165,16 +174,15 @@ void ClockScreen::drawTime(bool force) {
         (uiVersion.version(UiChannel::TIME) % 2) == 0;
 
     tft.setTextSize(3);
-    tft.setTextColor(text, bg);
+    tft.setTextColor(timeColor, bg);
     tft.setCursor(X, Y);
 
-    if (colonVisible) {
+    if (colonVisible)
         tft.printf("%02d:%02d", h, m);
-    } else {
+    else
         tft.printf("%02d %02d", h, m);
-    }
 
-    // секунды — всегда muted, но тоже блендятся
+    // seconds
     const int SEC_W = 24;
     const int SEC_H = 12;
     const int SEC_X = X + TIME_W - SEC_W;
@@ -220,7 +228,7 @@ void ClockScreen::drawDht(bool force) {
     tft.setTextWrap(false);
 
     tft.setCursor(4, y);
-    tft.printf("%dC", (int)round(dht.temperature()));
+    tft.printf("%d°C", (int)round(dht.temperature()));
 
     char buf[8];
     snprintf(buf, sizeof(buf), "%d%%", (int)round(dht.humidity()));
