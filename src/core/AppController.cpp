@@ -100,8 +100,8 @@ if (_active == ActiveScreen::SETTINGS) {
     // =========================================================
     if (_active == ActiveScreen::CLOCK) {
 
-        if (e.type == ButtonEventType::SHORT_PRESS &&
-            e.id   == ButtonId::RIGHT) {
+        if (e.type == ButtonEventType::LONG_PRESS &&
+            e.id   == ButtonId::LEFT) {
 
             goForecast();
         }

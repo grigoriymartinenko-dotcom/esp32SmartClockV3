@@ -40,7 +40,8 @@
 class ThemeService {
 public:
     explicit ThemeService(UiVersionService& uiVersion);
-
+// Упрощённый доступ для UI (без знания NightTransition)
+const ThemeBlend& blend() const;
     // Установить значения по умолчанию (день).
     void begin();
 

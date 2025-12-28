@@ -5,28 +5,31 @@
 #include "services/ThemeService.h"
 #include "services/ForecastService.h"
 #include "services/LayoutService.h"
+#include "services/UiVersionService.h"
 
 #include "ui/weather/WeatherIcons.h"
 
 /*
- * ForecastScreen (SAFE MODE)
- * -------------------------
- * Стабильная версия без NightTransition / ThemeBlend.
+ * ForecastScreen
+ * --------------
+ * Экран прогноза погоды.
  *
- * Цель:
- *  - убрать мусор "4545646545"
- *  - убрать мигание
- *  - гарантировать целостный рендер
+ * ПРИНЦИП:
+ *  - Экран НИЧЕГО не знает про Day/Night
+ *  - Экран использует ТОЛЬКО ThemeBlend
+ *  - Экран реагирует ТОЛЬКО на UiVersionService
  *
- * Красоту вернём ПОСЛЕ стабилизации сервиса.
+ * Все решения о цветах и плавности переходов
+ * принимаются ВНЕ экрана (ThemeService).
  */
 class ForecastScreen : public Screen {
 public:
     ForecastScreen(
-        Adafruit_ST7735& tft,
-        ThemeService& theme,
-        ForecastService& forecast,
-        LayoutService& layout
+        Adafruit_ST7735&  tft,
+        ThemeService&     theme,
+        ForecastService&  forecast,
+        LayoutService&    layout,
+        UiVersionService& ui
     );
 
     void begin() override;
@@ -45,24 +48,30 @@ private:
     };
 
 private:
-    void drawHeader(bool force, const ForecastDay* d, uint8_t idx, uint8_t total);
-    void drawLoading(bool force);
-    void drawError(bool force);
-    void drawRowDay(bool force, const ForecastDay* d);
-    void drawRowNight(bool force, const ForecastDay* d);
-    void drawRowHum(bool force, int hum);
+    // ---- draw helpers ----
+    void redrawAll();
+    void drawHeader(const ThemeBlend& b,
+                    const ForecastDay* d,
+                    uint8_t idx,
+                    uint8_t total);
 
-    void clearWorkArea();
+    void drawLoading(const ThemeBlend& b);
+    void drawError(const ThemeBlend& b);
+
+    void drawRowDay(const ThemeBlend& b, const ForecastDay* d);
+    void drawRowNight(const ThemeBlend& b, const ForecastDay* d);
+    void drawRowHum(const ThemeBlend& b, int hum);
 
 private:
-    Adafruit_ST7735& _tft;
-    ForecastService& _forecast;
-    LayoutService&   _layout;
+    Adafruit_ST7735&  _tft;
+    ForecastService&  _forecast;
+    LayoutService&    _layout;
+    UiVersionService& _ui;
 
-    UiState _state = UiState::LOADING;
+    UiState _state     = UiState::LOADING;
     UiState _lastState = UiState::ERROR;
 
-    uint8_t _dayIndex = 0;
+    uint8_t _dayIndex     = 0;
     uint8_t _lastDayIndex = 255;
 
     bool _dirty = true;

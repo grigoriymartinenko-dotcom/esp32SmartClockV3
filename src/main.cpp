@@ -155,7 +155,8 @@ ForecastScreen forecastScreen(
     tft,
     themeService,
     forecastService,
-    layout
+    layout,
+    uiVersion   // 👈 ДОБАВИТЬ
 );
 
 SettingsScreen settingsScreen(

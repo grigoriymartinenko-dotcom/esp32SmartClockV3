@@ -42,7 +42,12 @@ bool ThemeService::isNight() const {
 const Theme& ThemeService::current() const {
     return _theme;
 }
-
+const ThemeBlend& ThemeService::blend() const {
+    // Пока без анимации: жёсткий Day / Night
+    static ThemeBlend cached;
+    cached = interpolate(_night ? 1.0f : 0.0f);
+    return cached;
+}
 // ============================================================================
 // NEW API: ThemeBlend for "ThemeBlend + postprocess" pipeline
 // ============================================================================
@@ -70,6 +75,19 @@ ThemeBlend ThemeService::interpolate(float k) const {
 
     // success: обычно "OK/online" — часто это select/confirm цвет
     out.success= blend565(THEME_DAY.select,        THEME_NIGHT.select,        k);
+
+    // ---------------------------------------------------------------------
+// Color temperature (иконки + текст)
+// ---------------------------------------------------------------------
+// fg  — нейтральный
+// fgCool — чуть холоднее (день)
+// fgWarm — заметно теплее (ночь)
+
+constexpr uint16_t COLOR_COOL = 0xFFFF; // белый
+constexpr uint16_t COLOR_WARM = 0xFFE0; // мягкий жёлтый
+
+out.fgCool = blend565(out.fg, COLOR_COOL, 0.20f); // лёгкий холод
+out.fgWarm = blend565(out.fg, COLOR_WARM, 0.35f); // тёплая ночь
 
     return out;
 }

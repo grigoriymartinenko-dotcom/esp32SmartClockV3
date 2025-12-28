@@ -54,7 +54,7 @@ void ClockScreen::begin() {
     }
 
     const float k = night.value();
-    const ThemeBlend th = themeService.interpolate(k);
+    const ThemeBlend th = themeService().interpolate(k);
 
     // Очистка рабочей области
     tft.fillRect(
@@ -118,7 +118,7 @@ void ClockScreen::drawTime(bool force) {
         return;
 
     const float k = night.value();
-    const ThemeBlend th = themeService.interpolate(k);
+    const ThemeBlend th = themeService().interpolate(k);
 
     // ---- fade HH:MM ----
     float fadeK = 1.0f;
@@ -184,7 +184,7 @@ void ClockScreen::drawTime(bool force) {
 void ClockScreen::drawDht(bool force) {
 
     const float k = night.value();
-    const ThemeBlend th = themeService.interpolate(k);
+    const ThemeBlend th = themeService().interpolate(k);
 
     const int y = layout.contentY() + DHT_Y_OFFSET;
 
