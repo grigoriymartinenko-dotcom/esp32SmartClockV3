@@ -15,6 +15,7 @@
 // ================= SERVICES =================
 #include "services/UiVersionService.h"
 #include "services/ThemeService.h"
+#include "services/ThemeBlend.h"
 #include "services/TimeService.h"
 #include "services/NightService.h"
 #include "services/ForecastService.h"
@@ -24,6 +25,7 @@
 #include "services/PreferencesService.h"
 #include "services/WifiService.h"
 #include "services/NightTransitionService.h"
+#include "services/ColorTemperatureService.h"
 
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
@@ -45,7 +47,6 @@
 #define TFT_CS   5
 #define TFT_DC   2
 #define TFT_RST  4
-
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 
 // ===== RTC (DS1302) =====
@@ -90,14 +91,14 @@ NightTransitionService nightTransition;
 ThemeService themeService(uiVersion);
 TimeService  timeService(uiVersion);
 
-
 PreferencesService prefs;
 NightService nightService(uiVersion, prefs);
+
+// ===== COLOR TEMPERATURE =====
+ColorTemperatureService colorTemp;
+
 // ===== WIFI =====
-WifiService wifi(
-    uiVersion,
-    prefs
-);
+WifiService wifi(uiVersion, prefs);
 
 ForecastService forecastService(
     "07108cf067a5fdf5aa26dce75354400f",
@@ -106,11 +107,7 @@ ForecastService forecastService(
     "en"
 );
 
-RtcService rtc(
-    RTC_CLK,
-    RTC_DAT,
-    RTC_RST
-);
+RtcService rtc(RTC_CLK, RTC_DAT, RTC_RST);
 
 // =====================================================
 // UI ELEMENTS
@@ -119,6 +116,7 @@ StatusBar statusBar(
     tft,
     themeService,
     nightTransition,
+    colorTemp,        // ← НОВОЕ
     timeService,
     wifi
 );
@@ -132,9 +130,7 @@ ButtonBar buttonBar(
 // =====================================================
 // CONNECTIVITY (БЕЗ UI)
 // =====================================================
-ConnectivityService connectivity(
-    timeService
-);
+ConnectivityService connectivity(timeService);
 
 // =====================================================
 // SEPARATORS
@@ -148,7 +144,7 @@ UiSeparator sepBottom(tft, themeService, layout);
 ClockScreen clockScreen(
     tft,
     timeService,
-    nightTransition,   // ✅ ВОТ ОН
+    nightTransition,
     themeService,
     layout,
     uiVersion,
@@ -209,7 +205,6 @@ void setup() {
 
     uiVersion.begin();
     prefs.begin();
-
     nightService.begin();
 
     timeService.setTimezone(
@@ -248,23 +243,21 @@ void setup() {
 void loop() {
 
     timeService.update();
-
-    // NightService — единственная "истина": ночь сейчас или день.
-    // Он учитывает AUTO/ON/OFF и интервал.
     nightService.update(timeService);
 
-    // ---------------------------------------------------------------------
-    // Шаг 5 (NightTransition): делаем переход глобальным (для всех экранов).
-    //
-    // ВАЖНО:
-    //  - themeService.setNight(...) оставляем для совместимости со старыми экранами
-    //  - nightTransition.setTarget(...) задаёт ЦЕЛЬ для плавного перехода
-    //  - nightTransition.update() крутится ВСЕГДА, независимо от активного экрана
-    // ---------------------------------------------------------------------
     const bool nightNow = nightService.isNight();
-    themeService.setNight(nightNow);        // жёсткое day/night (legacy)
-    nightTransition.setTarget(nightNow);    // цель для плавного коэффициента 0..1
-    nightTransition.update();               // переход обновляется каждый loop
+    themeService.setNight(nightNow);        // legacy
+    nightTransition.setTarget(nightNow);
+    nightTransition.update();
+
+    // TEMP AUTO (пока просто)
+    colorTemp.set(
+        nightTransition.value() > 0.7f
+            ? ColorTemp::NIGHT
+            : nightTransition.value() > 0.3f
+                ? ColorTemp::EVENING
+                : ColorTemp::DAY
+    );
 
     wifi.update();
     dht.update();

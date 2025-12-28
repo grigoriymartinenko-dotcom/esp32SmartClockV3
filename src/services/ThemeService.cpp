@@ -44,6 +44,37 @@ const Theme& ThemeService::current() const {
 }
 
 // ============================================================================
+// NEW API: ThemeBlend for "ThemeBlend + postprocess" pipeline
+// ============================================================================
+
+ThemeBlend ThemeService::interpolate(float k) const {
+
+    /*
+     * ВАЖНО:
+     *  - здесь мы НИЧЕГО не знаем про NightTransitionService
+     *  - нам просто дают коэффициент k (0..1)
+     *  - мы возвращаем "готовые" UI цвета ThemeBlend
+     */
+
+    ThemeBlend out;
+
+    out.bg     = blend565(THEME_DAY.bg,            THEME_NIGHT.bg,            k);
+    out.fg     = blend565(THEME_DAY.textPrimary,   THEME_NIGHT.textPrimary,   k);
+    out.accent = blend565(THEME_DAY.accent,        THEME_NIGHT.accent,        k);
+
+    // muted: вторичный текст (для StatusBar дат/лейблов — идеальный кандидат)
+    out.muted  = blend565(THEME_DAY.textSecondary, THEME_NIGHT.textSecondary, k);
+
+    // warn: в текущем UI StatusBar использует "warn" как ошибку → мапим на error (красный)
+    out.warn   = blend565(THEME_DAY.error,         THEME_NIGHT.error,         k);
+
+    // success: обычно "OK/online" — часто это select/confirm цвет
+    out.success= blend565(THEME_DAY.select,        THEME_NIGHT.select,        k);
+
+    return out;
+}
+
+// ============================================================================
 // blending helpers
 // ============================================================================
 
