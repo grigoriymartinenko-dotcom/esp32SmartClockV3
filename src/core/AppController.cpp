@@ -51,7 +51,6 @@ void AppController::goSettings() {
 }
 
 void AppController::handleEvent(const ButtonEvent& e) {
-
     // =========================================================
     // GLOBAL: LONG OK -> Settings (из любого экрана)
     // =========================================================
@@ -62,7 +61,6 @@ void AppController::handleEvent(const ButtonEvent& e) {
         goSettings();
         return;
     }
-
     // =========================================================
     // SETTINGS
     // =========================================================
