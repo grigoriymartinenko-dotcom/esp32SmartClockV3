@@ -21,9 +21,8 @@
  *  - Экран работает ТОЛЬКО с ThemeBlend
  *
  * UX:
- *  - Двухцветное время (HH : MM)
- *  - Мягкий fade при старте / смене экрана
- *  - Лёгкий псевдо-объём (shadow)
+ *  - Пульсирующее двоеточие (:)
+ *  - HH / MM не затрагиваются (Шаг A)
  */
 
 class ClockScreen : public Screen {
@@ -59,7 +58,7 @@ private:
 
     bool     dhtDrawnOnce = false;
 
-    // fade HH:MM
+    // fade HH:MM (оставляем как было)
     bool     fadeActive   = false;
     uint8_t  fadeStep     = 0;
 };

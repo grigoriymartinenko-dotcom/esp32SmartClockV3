@@ -27,6 +27,15 @@ static float smooth01(float t) {
     return t * t * (3.0f - 2.0f * t);
 }
 
+// Пульсация для ":" — 0..1
+// Используем секунды + долю секунды → мягкое "дыхание"
+static float colonPulse(uint32_t ms) {
+    // период ~1 сек
+    float t = (float)(ms % 1000) / 1000.0f;
+    // sin: 0..1
+    return 0.5f + 0.5f * sinf(t * 2.0f * PI);
+}
+
 // =====================================================
 // ctor
 // =====================================================
@@ -63,7 +72,6 @@ void ClockScreen::begin() {
 
     const ThemeBlend th = themeService().interpolate(night.value());
 
-    // Очистка рабочей области
     tft.fillRect(
         0,
         layout.contentY(),
@@ -102,13 +110,15 @@ void ClockScreen::update() {
         return;
     }
 
-    // ===== TIME =====
-    uint32_t timeV = uiVersion.version(UiChannel::TIME);
-    if (timeV != lastTimeV) {
-        lastTimeV = timeV;
-        drawTime(false);
-    }
-
+// ===== TIME =====
+uint32_t timeV = uiVersion.version(UiChannel::TIME);
+if (timeV != lastTimeV) {
+    lastTimeV = timeV;
+    drawTime(false);
+} else {
+    // перерисовываем ":" для пульсации
+    drawTime(false);
+}
     // ===== DHT =====
     uint32_t dhtV = uiVersion.version(UiChannel::DHT);
     if (dht.isValid() && (!dhtDrawnOnce || dhtV != lastDhtV)) {
@@ -118,7 +128,7 @@ void ClockScreen::update() {
 }
 
 // =====================================================
-// drawTime (premium look)
+// drawTime — ШАГ A (ТОЛЬКО :)
 // =====================================================
 void ClockScreen::drawTime(bool force) {
 
@@ -127,7 +137,7 @@ void ClockScreen::drawTime(bool force) {
 
     const ThemeBlend th = themeService().interpolate(night.value());
 
-    // ---- fade ----
+    // ---- fade HH:MM (как было) ----
     float fadeK = 1.0f;
     if (fadeActive) {
         fadeK = smooth01((float)fadeStep / (float)FADE_STEPS);
@@ -151,15 +161,7 @@ void ClockScreen::drawTime(bool force) {
         tft.fillRect(X0, Y0, TIME_W, TIME_H, th.bg);
     }
 
-    const bool colonVisible =
-        (uiVersion.version(UiChannel::TIME) % 2) == 0;
-
     tft.setTextSize(3);
-
-    // ---- shadow (pseudo depth) ----
-    tft.setTextColor(th.muted, th.bg);
-    tft.setCursor(X0 + 1, Y0 + 1);
-    tft.printf("%02d:%02d", h, m);
 
     // ---- HH ----
     uint16_t hhColor =
@@ -169,23 +171,38 @@ void ClockScreen::drawTime(bool force) {
     tft.setCursor(X0, Y0);
     tft.printf("%02d", h);
 
-    // ---- colon ----
-    uint16_t colonColor =
-        ThemeService::blend565(th.muted, th.accent, fadeK);
+float nightK = night.value(); // 0..1
+    // В Day: accent → accent
+    // В Night: accent → muted
 
-    tft.setTextColor(colonColor, th.bg);
-    tft.setCursor(X0 + 2 * DIGIT_W, Y0);
-    tft.print(colonVisible ? ":" : " ");
+// ---- ":" (СТАБИЛЬНО ВИДИМОЕ + МЯГКАЯ ПУЛЬСАЦИЯ) ----
+// Базовый цвет — ВСЕГДА видимый
+uint16_t colonColor = th.accent;
+// После fade добавляем мягкую пульсацию яркости
+if (!fadeActive) {
+    float pulse = colonPulse(millis()); // 0..1
+    // Лёгкое усиление яркости, а не замена цвета
+    colonColor = ThemeService::blend565(colonColor, th.fg, pulse * 1.0f);
+}
+
+tft.setTextColor(colonColor, th.bg);
+tft.setCursor(X0 + 2 * DIGIT_W, Y0);
+tft.print(":");
 
     // ---- MM ----
     uint16_t mmColor =
-        ThemeService::blend565(th.muted, th.fg, fadeK * 0.85f);
+        ThemeService::blend565(th.muted, th.fg, fadeK);
 
     tft.setTextColor(mmColor, th.bg);
     tft.setCursor(X0 + 3 * DIGIT_W, Y0);
     tft.printf("%02d", m);
 
-    // ---- seconds ----
+// ---- seconds ----
+// секунды перерисовываем ТОЛЬКО при реальном изменении времени
+static int lastSec = -1;
+if (s != lastSec || force) {
+    lastSec = s;
+
     const int SEC_X = X0 + TIME_W - 24;
     const int SEC_Y = Y0 + TIME_H + 4;
 
@@ -194,6 +211,7 @@ void ClockScreen::drawTime(bool force) {
     tft.setTextColor(th.muted, th.bg);
     tft.setCursor(SEC_X, SEC_Y);
     tft.printf("%02d", s);
+}
 }
 
 // =====================================================
@@ -211,18 +229,18 @@ void ClockScreen::drawDht(bool force) {
     if (!dht.isValid())
         return;
 
-    tft.setTextSize(1);
-    tft.setTextColor(th.muted, th.bg);
+    tft.setTextSize(2);
+    tft.setTextColor(th.warn, th.bg);
     tft.setTextWrap(false);
 
     tft.setCursor(4, y);
-    tft.printf("%d°C", (int)round(dht.temperature()));
+    tft.printf("%dC", (int)round(dht.temperature()));
 
     char buf[8];
     snprintf(buf, sizeof(buf), "%d%%", (int)round(dht.humidity()));
 
-    const int w = strlen(buf) * 6;
-    tft.setCursor(tft.width() - w - 4, y);
+    const int w = strlen(buf) * 8;
+    tft.setCursor(tft.width() - w-15 , y);
     tft.print(buf);
 
     dhtDrawnOnce = true;
