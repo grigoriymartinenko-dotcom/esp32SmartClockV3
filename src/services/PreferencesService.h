@@ -93,6 +93,12 @@ public:
     void save();
     void resetToDefaults();
 
+    // =================================================
+// Brightness
+// =================================================
+uint8_t brightness() const;
+void setBrightness(uint8_t value);
+
 private:
     uint8_t eepromAddr;
     PreferencesData data{};

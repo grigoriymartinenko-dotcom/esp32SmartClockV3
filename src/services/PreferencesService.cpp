@@ -152,6 +152,17 @@ void PreferencesService::setTimezone(int32_t gmt, int32_t dst) {
 }
 
 // ============================================================================
+// BRIGHTNESS
+// ============================================================================
+uint8_t PreferencesService::brightness() const {
+    return data.brightness;
+}
+
+void PreferencesService::setBrightness(uint8_t value) {
+    data.brightness = value;
+}
+
+// ============================================================================
 // EEPROM low-level
 // ============================================================================
 void PreferencesService::writeBlock(const uint8_t* buf, uint16_t len) {

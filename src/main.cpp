@@ -38,6 +38,7 @@
 #include "screens/ClockScreen.h"
 #include "screens/ForecastScreen.h"
 #include "screens/SettingsScreen.h"
+#include "services/BrightnessService.h"
 
 // =====================================================
 // PINOUT
@@ -47,6 +48,8 @@
 #define TFT_CS   5
 #define TFT_DC   2
 #define TFT_RST  4
+#define TFT_BL 12
+#define TFT_BL_CH  0   // PWM канал для подсветки
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 
 // ===== RTC (DS1302) =====
@@ -194,7 +197,7 @@ AppController app(
     forecastScreen,
     settingsScreen
 );
-
+BrightnessService brightness;
 // =====================================================
 // SETUP
 // =====================================================
@@ -212,10 +215,23 @@ void setup() {
         prefs.tzGmtOffset(),
         prefs.tzDstOffset()
     );
+// 1. Гарантируем, что подсветка не вспыхнет при старте
+pinMode(TFT_BL, OUTPUT);
+digitalWrite(TFT_BL, LOW);
 
-    tft.initR(INITR_BLACKTAB);
-    tft.setRotation(1);
-    tft.fillScreen(0x0000);
+tft.initR(INITR_BLACKTAB);
+tft.setRotation(1);
+tft.fillScreen(0x0000);
+
+ledcSetup(TFT_BL_CH, 5000, 8);
+ledcAttachPin(TFT_BL, TFT_BL_CH);
+
+brightness.attach([](uint8_t hw) {
+    ledcWrite(TFT_BL_CH, hw);
+});
+
+brightness.begin();
+brightness.apply();
 
     buttons.begin();
     themeService.begin();
