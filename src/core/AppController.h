@@ -42,7 +42,6 @@ private:
     void goForecast();
     void goSettings();
 
-private: 
     ScreenManager& _sm;
     ClockScreen& _clock;
     ForecastScreen& _forecast;

@@ -44,6 +44,16 @@ public:
     bool exitRequested() const;
     void clearExitRequest();
 
+    // =========================================================
+    // Wi-Fi routing helper (ВАЖНО)
+    // =========================================================
+    // Этот хендлер должен иметь приоритет над обычным onShortOk(),
+    // иначе OK в Wi-Fi list/scan будет трактоваться как enterEdit().
+    //
+    // AppController вызывает его первым для ButtonId::OK.
+    // Возвращает true, если событие обработано Wi-Fi подсистемой.
+    bool handleWifiShortOk();
+
 protected:
     void redrawAll();
 
@@ -74,12 +84,12 @@ private:
     void enterSubmenu(Level lvl);
     void exitSubmenu(bool apply);
 
-    bool handleWifiShortOk();
+    // Wi-Fi handlers (остальные остаются private — AppController их не вызывает)
     bool handleWifiShortBack();
     bool handleWifiLongOk();
     bool handleWifiLongBack();
 
-    // 👇 ДОБАВЛЕНО: применение Night mode
+    // применение Night mode
     void applyNightSettings();
 
 private:

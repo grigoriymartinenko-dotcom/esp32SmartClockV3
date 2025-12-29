@@ -9,26 +9,13 @@
  * ----------------
  * ЕДИНЫЙ источник истины о Wi-Fi.
  *
- * Что гарантирует этот файл:
- *
- * 1. Если WiFi.status() == WL_CONNECTED
- *    → в списке сетей ОБЯЗАТЕЛЬНО есть ровно ОДНА сеть с connected = true
- *
- * 2. Подключённая сеть ВСЕГДА вверху списка
- *
- * 3. Scan:
- *    - полностью пересобирает список сетей
- *    - НО НЕ теряет подключённую сеть
- *
- * 4. UI НЕ мигает:
- *    - UiVersion bump происходит ТОЛЬКО при реальных изменениях
- *
- * 5. Полная совместимость с существующим SettingsWifi.cpp
- *    (ssidAt(), connect(), connect(ssid, pass) — всё на месте)
+ * ИСПРАВЛЕНИЕ:
+ *  - Подключённая сеть НЕ подменяет список
+ *  - ENSURE CONNECTED выполняется ТОЛЬКО после завершённого scan
  */
 
 // ============================================================================
-// helpers (локальные утилиты, UI их НЕ видит)
+// helpers
 // ============================================================================
 
 static void copySsid(char out[33], const char* in) {
@@ -44,11 +31,6 @@ static bool ssidEquals(const char* a, const char* b) {
     return a && b && strcmp(a, b) == 0;
 }
 
-/*
- * Сортировка сетей:
- *  1) connected — всегда выше
- *  2) дальше по RSSI (больше — лучше)
- */
 static bool netLess(const WifiService::Network& a,
                     const WifiService::Network& b) {
 
@@ -72,7 +54,6 @@ WifiService::WifiService(
 // ============================================================================
 // UI version helpers
 // ============================================================================
-
 void WifiService::bumpList() {
     _listVersion++;
     _ui.bump(UiChannel::WIFI);
@@ -110,22 +91,16 @@ void WifiService::begin() {
 }
 
 // ============================================================================
-// update (ГЛАВНАЯ МАШИНА СОСТОЯНИЙ)
+// update
 // ============================================================================
 void WifiService::update() {
 
     if (!_enabled)
         return;
 
-    // ------------------------------------------------------------------------
-    // READ REAL WIFI STATE
-    // ------------------------------------------------------------------------
     wl_status_t st = WiFi.status();
     bool nowConnected = (st == WL_CONNECTED);
 
-    // ------------------------------------------------------------------------
-    // STATE TRANSITIONS
-    // ------------------------------------------------------------------------
     if (nowConnected && _state != State::ONLINE) {
         _state = State::ONLINE;
         copySsid(_currentSsid, WiFi.SSID().c_str());
@@ -138,9 +113,6 @@ void WifiService::update() {
         bumpState();
     }
 
-    // ------------------------------------------------------------------------
-    // CONNECT TIMEOUT
-    // ------------------------------------------------------------------------
     if (_state == State::CONNECTING) {
         if (millis() - _connectStartMs > CONNECT_TIMEOUT_MS) {
             _state = State::ERROR;
@@ -150,7 +122,7 @@ void WifiService::update() {
     }
 
     // ------------------------------------------------------------------------
-    // SCAN STATE MACHINE
+    // SCAN
     // ------------------------------------------------------------------------
     if (_scanState == ScanState::SCANNING) {
 
@@ -158,8 +130,6 @@ void WifiService::update() {
         if (res == WIFI_SCAN_RUNNING)
             return;
 
-        // ВАЖНО:
-        // Scan всегда ПЕРЕСОБИРАЕТ список сетей с нуля
         _networks.clear();
 
         if (res == WIFI_SCAN_FAILED) {
@@ -172,16 +142,13 @@ void WifiService::update() {
         _scanState = ScanState::DONE;
 
         for (int i = 0; i < res; i++) {
-
             Network n{};
             copySsid(n.ssid, WiFi.SSID(i).c_str());
-
             n.rssi    = (int16_t)WiFi.RSSI(i);
             n.secured = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
             n.saved   = _prefs.hasWifiCredentials() &&
                         ssidEquals(_prefs.wifiSsid(), n.ssid);
-            n.connected = false; // connected добавляется ПОЗЖЕ
-
+            n.connected = false;
             _networks.push_back(n);
         }
 
@@ -191,9 +158,11 @@ void WifiService::update() {
     }
 
     // ------------------------------------------------------------------------
-    // ENSURE CONNECTED NETWORK EXISTS (КЛЮЧЕВОЙ БЛОК)
+    // ENSURE CONNECTED (ТОЛЬКО ПОСЛЕ SCAN DONE)
     // ------------------------------------------------------------------------
-    if (_state == State::ONLINE && _currentSsid[0]) {
+    if (_scanState == ScanState::DONE &&
+        _state == State::ONLINE &&
+        _currentSsid[0]) {
 
         bool found   = false;
         bool changed = false;
@@ -206,29 +175,13 @@ void WifiService::update() {
                 }
                 n.rssi = (int16_t)WiFi.RSSI();
                 found = true;
-            } else {
-                if (n.connected) {
-                    n.connected = false;
-                    changed = true;
-                }
+            } else if (n.connected) {
+                n.connected = false;
+                changed = true;
             }
         }
 
-        // Если подключённой сети нет в scan → ДОБАВЛЯЕМ
-        if (!found) {
-            Network n{};
-            copySsid(n.ssid, _currentSsid);
-            n.connected = true;
-            n.secured   = true;
-            n.saved     = true;
-            n.rssi      = (int16_t)WiFi.RSSI();
-            _networks.push_back(n);
-            changed = true;
-        }
-
-        // ВАЖНО:
-        // bumpList() ТОЛЬКО если реально что-то изменилось
-        if (changed) {
+        if (found && changed) {
             std::stable_sort(_networks.begin(), _networks.end(), netLess);
             recomputeConnectedIndex();
             bumpList();
@@ -236,6 +189,10 @@ void WifiService::update() {
     }
 }
 
+// ============================================================================
+// ENABLE / DISABLE / CONNECT / SCAN / GETTERS
+// (БЕЗ ИЗМЕНЕНИЙ)
+// ============================================================================
 // ============================================================================
 // ENABLE / DISABLE
 // ============================================================================
