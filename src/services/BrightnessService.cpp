@@ -1,6 +1,6 @@
 #include "services/BrightnessService.h"
-
 #include <Arduino.h>
+
 #include "services/PreferencesService.h"
 
 // Используем существующий PreferencesService
@@ -17,11 +17,11 @@ BrightnessService::BrightnessService() {
 // -----------------------------------------------------
 void BrightnessService::begin() {
 
-    // Читаем из PreferencesData
+    // читаем сохранённое значение
     _value = clamp(prefs.brightness());
 
-    // Если в EEPROM было 0 (или мусор) — ставим 100%
-    if (_value == 0) {
+    // защита от мусора / нуля
+    if (_value < 10) {
         _value = 100;
         prefs.setBrightness(_value);
         prefs.save();
@@ -39,7 +39,6 @@ void BrightnessService::set(uint8_t value) {
 
     _value = v;
 
-    // сохраняем в PreferencesData
     prefs.setBrightness(_value);
     prefs.save();
 }
@@ -52,32 +51,42 @@ uint8_t BrightnessService::get() const {
 }
 
 // -----------------------------------------------------
-// apply
+// apply (ThemeBlend)
 // -----------------------------------------------------
-void BrightnessService::apply() {
+ThemeBlend BrightnessService::apply(const ThemeBlend& in) const {
 
-    if (!_apply)
-        return;
+    ThemeBlend out = in;
 
-    // 0..100 → 0..255
-    uint8_t hw = (uint8_t)((_value * 255) / 100);
-    _apply(hw);
+    // 🔒 ФОН НИКОГДА НЕ ТРОГАЕМ
+    out.bg = in.bg;
+
+    // 🔽 затемняем ТОЛЬКО foreground-цвета
+    out.fg      = scale565(in.fg);
+    out.muted   = scale565(in.muted);
+    out.accent  = scale565(in.accent);
+    out.warn    = scale565(in.warn);
+    out.success = scale565(in.success);
+
+    return out;
 }
 
 // -----------------------------------------------------
-// attach
-// -----------------------------------------------------
-void BrightnessService::attach(ApplyFn fn) {
-    _apply = fn;
-}
-
-// -----------------------------------------------------
-// clamp
+// helpers
 // -----------------------------------------------------
 uint8_t BrightnessService::clamp(uint8_t v) const {
 
-    if (v > 100)
-        return 100;
-
+    if (v < 10)  return 10;
+    if (v > 100) return 100;
     return v;
+}
+
+uint16_t BrightnessService::scale565(uint16_t c) const {
+
+    float k = _value / 100.0f;
+
+    uint8_t r = ((c >> 11) & 0x1F) * k;
+    uint8_t g = ((c >> 5)  & 0x3F) * k;
+    uint8_t b = ( c        & 0x1F) * k;
+
+    return (r << 11) | (g << 5) | b;
 }

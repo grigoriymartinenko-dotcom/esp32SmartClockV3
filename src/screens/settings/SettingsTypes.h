@@ -25,7 +25,8 @@ enum class Level : uint8_t {
         WIFI_PASSWORD,  // 🔥 ВВОД ПАРОЛЯ
         NIGHT,
         TIMEZONE,
-        TIME
+        TIME,
+        BRIGHTNESS
     };
 
     /*

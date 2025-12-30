@@ -17,6 +17,7 @@ SettingsScreen::SettingsScreen(
     NightService& nightService,
     TimeService& timeService,
     WifiService& wifiService,
+    BrightnessService& brightnessService,
     UiVersionService& uiVersion,
     ButtonBar& buttonBar
 )
@@ -26,6 +27,7 @@ SettingsScreen::SettingsScreen(
     , _night(nightService)
     , _time(timeService)
     , _wifi(wifiService)
+    , _brightness(brightnessService)
     , _ui(uiVersion)
     , _buttons(buttonBar)
 {
@@ -44,6 +46,10 @@ void SettingsScreen::begin() {
     _selected    = 0;
     _subSelected = 0;
 
+    // ===== Brightness =====
+    _tmpBrightness = _brightness.get();
+    _bakBrightness = _tmpBrightness;
+
     _wifiListTop      = 0;
     _wifiListSelected = 0;
 
@@ -51,7 +57,7 @@ void SettingsScreen::begin() {
     _wifiPassLen = 0;
     _wifiCharIdx = 0;
 
-    // ===== Night: загрузка из сервиса (уже из EEPROM) =====
+    // ===== Night: загрузка из сервиса =====
     _bakMode = _night.mode();
     _tmpMode = _bakMode;
 
@@ -61,7 +67,6 @@ void SettingsScreen::begin() {
     _tmpNightStart = _bakNightStart;
     _tmpNightEnd   = _bakNightEnd;
 
-    // versions
     _lastWifiListVersion  = _wifi.listVersion();
     _lastWifiStateVersion = _wifi.stateVersion();
 
@@ -150,11 +155,16 @@ void SettingsScreen::onShortBack() {
 
 void SettingsScreen::onLongOk() {
 
+    // ===== APPLY BRIGHTNESS =====
+    if (_mode == UiMode::EDIT && _level == Level::BRIGHTNESS) {
+        _bakBrightness = _tmpBrightness;
+        exitEdit(true);
+        return;
+    }
+
     if (_mode == UiMode::EDIT) {
 
-        // =========================
-        // APPLY NIGHT SETTINGS
-        // =========================
+        // ===== APPLY NIGHT =====
         if (_level == Level::NIGHT) {
 
             _night.setMode(_tmpMode);
@@ -177,8 +187,15 @@ void SettingsScreen::onLongOk() {
 
 void SettingsScreen::onLongBack() {
 
+    // ===== CANCEL BRIGHTNESS =====
+if (_mode == UiMode::EDIT && _level == Level::BRIGHTNESS) {
+    _brightness.set(_bakBrightness);
+    
+    exitEdit(false);
+    return;
+}
     if (_mode == UiMode::EDIT) {
-        exitEdit(false);   // ❌ CANCEL
+        exitEdit(false);
         _buttons.markDirty();
         return;
     }
@@ -218,10 +235,18 @@ void SettingsScreen::enterSubmenu(Level lvl) {
         return;
 
     _level = lvl;
+    if (_level == Level::BRIGHTNESS) {
+    _tmpBrightness = _brightness.get();
+    _bakBrightness = _tmpBrightness;
+}
     _mode  = UiMode::NAV;
     _subSelected = 0;
 
-    // ===== при входе в Night — перечитываем актуальные =====
+    if (_level == Level::BRIGHTNESS) {
+        _tmpBrightness = _brightness.get();
+        _bakBrightness = _tmpBrightness;
+    }
+
     if (_level == Level::NIGHT) {
         _bakMode = _night.mode();
         _tmpMode = _bakMode;
@@ -243,9 +268,33 @@ void SettingsScreen::enterSubmenu(Level lvl) {
     updateButtonBarContext();
     _buttons.markDirty();
 }
-
+/*
 // ============================================================================
 // EDIT MODE
 // ============================================================================
+void SettingsScreen::editInc() {
 
+    if (_level == Level::BRIGHTNESS) {
+        if (_tmpBrightness < 100) {
+            _tmpBrightness++;
+            _brightness.set(_tmpBrightness);
+            _brightness.apply();   // live preview
+            _dirty = true;
+        }
+        return;
+    }
+}
 
+void SettingsScreen::editDec() {  
+
+    if (_level == Level::BRIGHTNESS) {
+        if (_tmpBrightness > 5) {
+            _tmpBrightness--;
+            _brightness.set(_tmpBrightness);
+            _brightness.apply();
+            _dirty = true;
+        }
+        return;
+    }
+}
+    */

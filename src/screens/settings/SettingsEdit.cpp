@@ -17,8 +17,13 @@
 // ENTER EDIT
 // ============================================================================
 void SettingsScreen::enterEdit() {
+
     _mode = UiMode::EDIT;
-updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
+
+    // 🔥 ВАЖНО: при входе в EDIT сразу обновляем ButtonBar контекст
+    // (чтобы подсказки соответствовали EDIT режиму)
+    updateButtonBarContext();
+
     // backup значений
     if (_level == Level::WIFI) {
         _bakWifiOn = _tmpWifiOn;
@@ -47,6 +52,8 @@ updateButtonBarContext();   // 🔥 ДОБАВЛЕНО
 // ============================================================================
 void SettingsScreen::exitEdit(bool apply) {
 
+    Serial.println("EXIT EDIT CALLED");
+
     if (!apply) {
         // rollback
         if (_level == Level::WIFI) {
@@ -69,16 +76,41 @@ void SettingsScreen::exitEdit(bool apply) {
         }
     }
 
-    // APPLY делаем НЕ здесь
     _mode = UiMode::NAV;
-    updateButtonBarContext();      // 🔥 ДОБАВЛЕНО
+    updateButtonBarContext();
+
+    // локальный redraw Settings
+    _needFullClear = true;
     _dirty = true;
+
+    // 🔥 ВАЖНО: Brightness = глобальное визуальное изменение
+    if (_level == Level::BRIGHTNESS) {
+
+        Serial.print("LEVEL = ");
+        Serial.println((int)_level);
+
+        // ❗ сообщаем системе: нужен полный redraw экрана
+        _ui.bump(UiChannel::SCREEN);
+    }
 }
 
 // ============================================================================
 // EDIT INC
 // ============================================================================
 void SettingsScreen::editInc() {
+
+    // ------------------------------------------------------------
+    // BRIGHTNESS (live preview)
+    // ------------------------------------------------------------
+    if (_level == Level::BRIGHTNESS) {
+        if (_tmpBrightness < 100) {
+            _tmpBrightness++;
+            _brightness.set(_tmpBrightness);
+//            _brightness.apply();   // live preview
+            _dirty = true;
+        }
+        return;
+    }
 
     // ------------------------------------------------------------
     // WIFI
@@ -133,6 +165,21 @@ void SettingsScreen::editInc() {
 // EDIT DEC
 // ============================================================================
 void SettingsScreen::editDec() {
+
+    // ------------------------------------------------------------
+    // BRIGHTNESS (live preview)
+    // ------------------------------------------------------------
+    if (_level == Level::BRIGHTNESS) {
+        if (_tmpBrightness > 5) {
+            _tmpBrightness--;
+            _brightness.set(_tmpBrightness);
+            //_brightness.apply();   // live preview
+            _ui.bump(UiChannel::SCREEN);
+_needFullClear = true;
+_dirty = true;
+        }
+        return;
+    }
 
     // ------------------------------------------------------------
     // WIFI

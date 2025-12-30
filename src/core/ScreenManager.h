@@ -12,6 +12,27 @@
 #include "services/UiVersionService.h"
 #include "services/ThemeService.h"
 
+/*
+ * ScreenManager
+ * -------------
+ * Главный компоновщик кадра:
+ *  1) Screen (контент)
+ *  2) Separators
+ *  3) StatusBar (overlay)
+ *  4) ButtonBar (overlay)
+ *
+ * ВАЖНО:
+ *  - _tft / _theme / _uiVersion у нас ХРАНЯТСЯ как указатели (T*),
+ *    поэтому доступ ТОЛЬКО через ->.
+ *
+ *  - Для Brightness (PWM подсветки) нужен "глобальный reset кадра":
+ *      * залить весь экран bg (fillScreen)
+ *      * заставить текущий экран заново отрисоваться (begin)
+ *      * заставить overlays перерисоваться (markDirty)
+ *    потому что Brightness меняет физическое состояние подсветки и
+ *    частичные перерисовки оставляют визуальные артефакты.
+ */
+
 class ScreenManager {
 public:
     ScreenManager(
@@ -35,6 +56,9 @@ public:
     bool currentHasStatusBar() const;
     bool currentHasBottomBar() const;
 
+    // Глобальный принудительный redraw (используем после Brightness apply/cancel)
+    void forceFullRedraw();
+
 private:
     void applyLayout();
     void clearStatusArea();
@@ -56,4 +80,7 @@ private:
     UiSeparator*      _sepBottom;
     UiVersionService* _uiVersion;
     ThemeService*     _theme;
+
+    // 🔥 ВНУТРЕННИЙ флаг, только ScreenManager решает как делать redraw
+    bool _forceFullRedraw = false;
 };

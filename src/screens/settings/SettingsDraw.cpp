@@ -127,6 +127,7 @@ void SettingsScreen::redrawAll() {
         case Level::WIFI_LIST:     drawWifiList();     break;
         case Level::WIFI_PASSWORD: drawWifiPassword(); break;
         case Level::TIME:          drawTime();         break;
+        case Level::BRIGHTNESS:      drawBrightness();   break;
         case Level::NIGHT:         drawNight();        break;
         case Level::TIMEZONE:      drawTimezone();     break;
     }
@@ -476,4 +477,32 @@ void SettingsScreen::drawTimezone() {
     _tft.print("Timezone");
 
     // (позже сделаем как Night: поля + highlight)
+}
+
+void SettingsScreen::drawBrightness() {
+
+    const Theme& th = theme();
+    const int y0 = STATUSBAR_H;
+
+    _tft.setFont(nullptr);
+    _tft.setTextWrap(false);
+
+    _tft.setTextSize(2);
+    _tft.setCursor(20, y0 + 6);
+    _tft.setTextColor(th.textPrimary, th.bg);
+    _tft.print("Brightness");
+
+    _tft.setTextSize(1);
+
+    int y = y0 + 40;
+    bool editing = (_mode == UiMode::EDIT);
+
+    uint16_t color = editing ? th.warn : th.select;
+
+    _tft.fillRect(0, y, _tft.width(), 18, th.bg);
+    _tft.setTextColor(color, th.bg);
+    _tft.setCursor(20, y + 4);
+    _tft.print("> Level: ");
+    _tft.print(_tmpBrightness);
+    _tft.print("%");
 }

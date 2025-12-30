@@ -26,6 +26,7 @@
 #include "services/WifiService.h"
 #include "services/NightTransitionService.h"
 #include "services/ColorTemperatureService.h"
+#include "services/BrightnessService.h"
 
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
@@ -38,7 +39,6 @@
 #include "screens/ClockScreen.h"
 #include "screens/ForecastScreen.h"
 #include "screens/SettingsScreen.h"
-#include "services/BrightnessService.h"
 
 // =====================================================
 // PINOUT
@@ -48,8 +48,8 @@
 #define TFT_CS   5
 #define TFT_DC   2
 #define TFT_RST  4
-#define TFT_BL 12
-#define TFT_BL_CH  0   // PWM канал для подсветки
+//#define TFT_BL   12    // 🔆 подсветка TFT (ВСЕГДА 100%) сейчас в 3,3В
+
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 
 // ===== RTC (DS1302) =====
@@ -100,6 +100,9 @@ NightService nightService(uiVersion, prefs);
 // ===== COLOR TEMPERATURE =====
 ColorTemperatureService colorTemp;
 
+// ===== BRIGHTNESS (Variant B) =====
+BrightnessService brightness;
+
 // ===== WIFI =====
 WifiService wifi(uiVersion, prefs);
 
@@ -119,7 +122,7 @@ StatusBar statusBar(
     tft,
     themeService,
     nightTransition,
-    colorTemp,        // ← НОВОЕ
+    colorTemp,
     timeService,
     wifi
 );
@@ -159,7 +162,7 @@ ForecastScreen forecastScreen(
     themeService,
     forecastService,
     layout,
-    uiVersion   // 👈 ДОБАВИТЬ
+    uiVersion
 );
 
 SettingsScreen settingsScreen(
@@ -169,6 +172,7 @@ SettingsScreen settingsScreen(
     nightService,
     timeService,
     wifi,
+    brightness,
     uiVersion,
     buttonBar
 );
@@ -197,7 +201,7 @@ AppController app(
     forecastScreen,
     settingsScreen
 );
-BrightnessService brightness;
+
 // =====================================================
 // SETUP
 // =====================================================
@@ -215,23 +219,23 @@ void setup() {
         prefs.tzGmtOffset(),
         prefs.tzDstOffset()
     );
-// 1. Гарантируем, что подсветка не вспыхнет при старте
-pinMode(TFT_BL, OUTPUT);
-digitalWrite(TFT_BL, LOW);
 
-tft.initR(INITR_BLACKTAB);
-tft.setRotation(1);
-tft.fillScreen(0x0000);
+    // -------------------------------------------------
+    // TFT init + подсветка (ВСЕГДА 100%)
+    // -------------------------------------------------
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, LOW);     // не слепим при старте
 
-ledcSetup(TFT_BL_CH, 5000, 8);
-ledcAttachPin(TFT_BL, TFT_BL_CH);
+    tft.initR(INITR_BLACKTAB);
+    tft.setRotation(1);
+    tft.fillScreen(0x0000);
 
-brightness.attach([](uint8_t hw) {
-    ledcWrite(TFT_BL_CH, hw);
-});
+    digitalWrite(TFT_BL, HIGH);    // 🔆 подсветка ВКЛ и больше НЕ ТРОГАЕМ
 
-brightness.begin();
-brightness.apply();
+    // -------------------------------------------------
+    // Services
+    // -------------------------------------------------
+    brightness.begin();            // ← читаем prefs (10..100)
 
     buttons.begin();
     themeService.begin();
@@ -263,11 +267,11 @@ void loop() {
     nightService.update(timeService);
 
     const bool nightNow = nightService.isNight();
-    themeService.setNight(nightNow);        // legacy
+    themeService.setNight(nightNow);
     nightTransition.setTarget(nightNow);
     nightTransition.update();
 
-    // TEMP AUTO (пока просто)
+    // TEMP AUTO
     colorTemp.set(
         nightTransition.value() > 0.7f
             ? ColorTemp::NIGHT
@@ -293,14 +297,9 @@ void loop() {
         }
     }
 
-    // =========================================================
-    // [CHANGE] СНАЧАЛА РИСУЕМ UI, ПОТОМ УЖЕ БЛОКИРУЮЩИЙ HTTP/JSON
-    // =========================================================
+    // UI
     screenManager.update();
 
-    // =========================================================
-    // [CHANGE] ForecastService.update() перенесён В КОНЕЦ loop()
-    // чтобы не рвать кадр во время отрисовки.
-    // =========================================================
+    // Network (после UI)
     forecastService.update();
 }

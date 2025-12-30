@@ -8,6 +8,7 @@
 #include "services/UiVersionService.h"
 #include "services/TimeService.h"
 #include "services/PreferencesService.h"
+#include "services/BrightnessService.h"
 #include "services/WifiService.h"
 #include "ui/ButtonBar.h"
 
@@ -22,6 +23,7 @@ public:
         NightService& nightService,
         TimeService& timeService,
         WifiService& wifiService,
+        BrightnessService& brightnessService,
         UiVersionService& uiVersion,
         ButtonBar& buttonBar
     );
@@ -56,7 +58,7 @@ public:
 
 protected:
     void redrawAll();
-
+    void drawBrightness();
     void drawRoot();
     void drawWifi();
     void drawWifiList();
@@ -129,6 +131,7 @@ private:
     // ===== Menu =====
     static constexpr MenuItem MENU[] = {
         { "Wi-Fi",      Level::WIFI     },
+        { "Brightness", Level::BRIGHTNESS },
         { "Timezone",   Level::TIMEZONE },
         { "Time",       Level::TIME     },
         { "Night mode", Level::NIGHT    },
@@ -165,7 +168,10 @@ private:
     // ===== Wi-Fi enable =====
     bool _tmpWifiOn = true;
     bool _bakWifiOn = true;
-
+    BrightnessService& _brightness;
+    // ===== Brightness =====
+int _tmpBrightness = 100;
+int _bakBrightness = 100;
     // ===== Versions =====
     uint32_t _lastWifiListVersion  = 0;
     uint32_t _lastWifiStateVersion = 0;
