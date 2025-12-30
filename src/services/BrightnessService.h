@@ -1,36 +1,33 @@
 #pragma once
 #include <stdint.h>
-
 #include "services/ThemeBlend.h"
 
 /*
- * BrightnessService (Variant B)
- * -----------------------------
- * Псевдо-яркость UI через ThemeBlend.
+ * BrightnessService
+ * -----------------
+ * ЕДИНЫЙ источник истины по яркости UI.
  *
- * ВАЖНО:
- *  - НЕ управляет подсветкой
- *  - НЕ знает про TFT / PWM
- *  - НЕ трогает bg (фон)
- *  - Минимум = 10%
+ * Отвечает за:
+ *  - хранение текущей яркости (0.1 .. 1.0)
+ *  - загрузку / сохранение prefs
+ *  - применение яркости к ThemeBlend
+ *
+ * НЕ управляет подсветкой TFT (это отдельный шаг).
  */
 
 class BrightnessService {
 public:
-    BrightnessService();
-
     void begin();
 
-    void set(uint8_t value);   // 0..100
-    uint8_t get() const;
+    // value: 0.1f .. 1.0f
+    void set(float value);
+    float get() const;
 
-    // Применение к ThemeBlend
+    // применить текущую яркость к ThemeBlend
     ThemeBlend apply(const ThemeBlend& in) const;
 
 private:
-    uint8_t clamp(uint8_t v) const;
-    uint16_t scale565(uint16_t c) const;
+    float _value = 1.0f;
 
-private:
-    uint8_t _value = 100;   // 10..100
+    static uint16_t scale(uint16_t rgb565, float k);
 };

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
-
+// =======================CONFIG==============================
+#include "config/Pins.h"
 // ================= TFT =================
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
@@ -17,6 +18,9 @@
 #include "services/ThemeService.h"
 #include "services/ThemeBlend.h"
 #include "services/TimeService.h"
+#include "services/TimeProvider.h"
+#include "services/RtcTimeProvider.h"
+#include "services/NtpTimeProvider.h"
 #include "services/NightService.h"
 #include "services/ForecastService.h"
 #include "services/DhtService.h"
@@ -27,6 +31,7 @@
 #include "services/NightTransitionService.h"
 #include "services/ColorTemperatureService.h"
 #include "services/BrightnessService.h"
+#include "services/BacklightService.h"
 
 // ================= LAYOUT =================
 #include "services/LayoutService.h"
@@ -40,34 +45,8 @@
 #include "screens/ForecastScreen.h"
 #include "screens/SettingsScreen.h"
 
-// =====================================================
-// PINOUT
-// =====================================================
-
-// ===== TFT (SPI) =====
-#define TFT_CS   5
-#define TFT_DC   2
-#define TFT_RST  4
-//#define TFT_BL   12    // 🔆 подсветка TFT (ВСЕГДА 100%) сейчас в 3,3В
-
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
-
-// ===== RTC (DS1302) =====
-#define RTC_CLK 14
-#define RTC_DAT 27
-#define RTC_RST 19
-
-// ===== DHT =====
-#define DHT_PIN  13
-#define DHT_TYPE DHT11
 DhtService dht(DHT_PIN, DHT_TYPE);
-
-// ===== BUTTONS =====
-#define BTN_LEFT   16
-#define BTN_RIGHT  17
-#define BTN_OK     25
-#define BTN_BACK   26
-
 Buttons buttons(
     BTN_LEFT,
     BTN_RIGHT,
@@ -76,36 +55,31 @@ Buttons buttons(
     50,
     800
 );
-
 // =====================================================
 // LAYOUT
 // =====================================================
 LayoutService layout(tft);
-
 // =====================================================
 // UI VERSION
 // =====================================================
 UiVersionService uiVersion;
 NightTransitionService nightTransition;
-
 // =====================================================
 // SERVICES
 // =====================================================
 ThemeService themeService(uiVersion);
-TimeService  timeService(uiVersion);
+
 
 PreferencesService prefs;
 NightService nightService(uiVersion, prefs);
-
 // ===== COLOR TEMPERATURE =====
 ColorTemperatureService colorTemp;
-
 // ===== BRIGHTNESS (Variant B) =====
 BrightnessService brightness;
-
+// ===== TFT BACKLIGHT (PWM) =====
+BacklightService backlight;
 // ===== WIFI =====
 WifiService wifi(uiVersion, prefs);
-
 ForecastService forecastService(
     "07108cf067a5fdf5aa26dce75354400f",
     "Kharkiv",
@@ -114,7 +88,11 @@ ForecastService forecastService(
 );
 
 RtcService rtc(RTC_CLK, RTC_DAT, RTC_RST);
+// ===== TIME PROVIDERS (async) =====
+RtcTimeProvider rtcProvider(rtc);
+NtpTimeProvider ntpProvider;
 
+TimeService  timeService(uiVersion);
 // =====================================================
 // UI ELEMENTS
 // =====================================================
@@ -219,32 +197,49 @@ void setup() {
         prefs.tzGmtOffset(),
         prefs.tzDstOffset()
     );
-
+// -------------------------------------------------
+// Time providers (priority order)
+// -------------------------------------------------
+// RTC даёт "примерное" время сразу,
+// NTP уточнит позже (асинхронно), если режим AUTO/NTP_ONLY.
+timeService.registerProvider(rtcProvider);
+timeService.registerProvider(ntpProvider);
     // -------------------------------------------------
-    // TFT init + подсветка (ВСЕГДА 100%)
+    // TFT init + подсветка (PWM)
     // -------------------------------------------------
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, LOW);     // не слепим при старте
+    // ВАЖНО:
+    //  - BacklightService управляет ФИЗИЧЕСКОЙ подсветкой TFT через PWM (LEDC).
+    //  - Это НЕ BrightnessService (тот влияет только на яркость ЦВЕТОВ в UI).
+    //
+    // Если TFT_BL у тебя сейчас реально подключён к 3.3V (как написано в pinout),
+    // то PWM работать НЕ будет, пока ты не заведёшь BL на GPIO (обычно через
+    // транзистор/MOSFET, либо напрямую, если модуль TFT это допускает).
+    //
+    // GPIO12 — "strap pin" у ESP32. В целом он может работать, но будь аккуратен
+    // с внешними подтяжками на старте. Если будут проблемы с бутом — перенесём BL
+    // на другой GPIO.
+    backlight.begin();
+    backlight.set(0.0f); // не слепим при старте (если BL реально управляем)
 
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
     tft.fillScreen(0x0000);
 
-    digitalWrite(TFT_BL, HIGH);    // 🔆 подсветка ВКЛ и больше НЕ ТРОГАЕМ
+    backlight.set(1.0f); // 🔆 подсветка ВКЛ (дальше будет управляться настройками)
+    delay(1000);
+backlight.set(0.2f);
+delay(1000);
+backlight.set(1.0f);
 
     // -------------------------------------------------
     // Services
     // -------------------------------------------------
-    brightness.begin();            // ← читаем prefs (10..100)
+    brightness.begin();            // пока дефолт 1.0f, позже подтянем prefs
 
     buttons.begin();
     themeService.begin();
 
     rtc.begin();
-    tm rtcTime;
-    if (rtc.read(rtcTime)) {
-        timeService.setFromRtc(rtcTime);
-    }
 
     timeService.begin();
     wifi.begin();
