@@ -22,16 +22,26 @@ void TimeService::registerProvider(TimeProvider& p) {
 // ------------------------------------------------------------
 void TimeService::begin() {
 
-    _syncState    = NOT_STARTED;
-    _ntpConfirmed = false;
-    _rtcWritten   = false;
+    _syncState      = NOT_STARTED;
+    _ntpConfirmed   = false;
+    _rtcWritten     = false;
 
-    // В AUTO / NTP_ONLY мы показываем UX "SYNCING" сразу.
-    // Реальная синхронизация в Arduino-ESP32 начинается после configTime(...)
-    // (который вызывается в setTimezone), а provider просто ждёт, когда время станет валидным.
+    _rtcAppliedOnce = false;
+    _ntpAppliedOnce = false;
+
+    _valid          = false;
+    _source         = NONE;
+
+    _lastMinute     = -1;
+    _lastSecond     = -1;
+
     if (_mode == AUTO || _mode == NTP_ONLY) {
         syncNtp();
+    } else {
+        _syncState = NOT_STARTED;
     }
+
+    _uiVersion.bump(UiChannel::TIME);
 }
 
 // ------------------------------------------------------------
@@ -39,14 +49,13 @@ void TimeService::begin() {
 // ------------------------------------------------------------
 void TimeService::update() {
 
-    if (_mode == LOCAL_ONLY) {
+    if (_mode == LOCAL_ONLY)
         return;
-    }
 
-    // 1) Сначала даём шанс провайдерам отдать новое время (RTC сразу, NTP позже)
+    // 1) provider stage (RTC first, NTP second)
     tryConsumeProviders();
 
-    // 2) Затем обновляем "системное" время (тик каждую секунду, DST и UI bump)
+    // 2) system clock tick (seconds should advance here)
     updateFromSystemClock();
 }
 
@@ -57,10 +66,13 @@ void TimeService::setMode(Mode m) {
     if (_mode == m)
         return;
 
-    _mode         = m;
-    _syncState    = NOT_STARTED;
-    _ntpConfirmed = false;
-    _rtcWritten   = false;
+    _mode          = m;
+    _syncState     = NOT_STARTED;
+    _ntpConfirmed  = false;
+    _rtcWritten    = false;
+
+    _rtcAppliedOnce = false;
+    _ntpAppliedOnce = false;
 
     if (_mode == AUTO || _mode == NTP_ONLY) {
         syncNtp();
@@ -84,24 +96,42 @@ void TimeService::setTimezone(long gmtOffsetSec, int daylightOffsetSec) {
     _gmtOffsetSec      = gmtOffsetSec;
     _daylightOffsetSec = daylightOffsetSec;
 
-    // ВАЖНО:
-    // - Здесь централизованно задаём timezone/DST для системного времени.
-    // - NtpTimeProvider будет "детектить" готовность времени через getLocalTime().
+    // Базовый TZ. DST включаем/выключаем динамически в updateFromSystemClock().
     configTime(_gmtOffsetSec, 0, "pool.ntp.org");
 }
 
 // ------------------------------------------------------------
-// RTC (compat)
+// RTC inject (compat)
 // ------------------------------------------------------------
 void TimeService::setFromRtc(const tm& t) {
     if (_mode == NTP_ONLY || _mode == LOCAL_ONLY)
         return;
 
+    if (!looksValid(t))
+        return;
+
+    // ВАЖНО: применяем RTC только один раз,
+    // иначе можно "прибить" системные секунды.
+    if (_rtcAppliedOnce)
+        return;
+
     _timeinfo = t;
     _valid    = true;
 
-    setSource(RTC);
     applySystemTime(t);
+    _rtcAppliedOnce = true;
+
+    setSource(RTC);
+
+    _uiVersion.bump(UiChannel::TIME);
+}
+
+// ------------------------------------------------------------
+// helpers
+// ------------------------------------------------------------
+bool TimeService::looksValid(const tm& t) {
+    const int y = t.tm_year + 1900;
+    return (y >= 2020 && y <= 2099);
 }
 
 // ------------------------------------------------------------
@@ -110,149 +140,130 @@ void TimeService::setFromRtc(const tm& t) {
 void TimeService::applySystemTime(const tm& t) {
 
     tm tmp = t;
+
+    // mktime() нормализует tm_wday/tm_yday (важно для weekday в UI)
     time_t epoch = mktime(&tmp);
-    if (epoch <= 0) {
-        return;
-    }
+    if (epoch <= 0) return;
 
     timeval tv{};
     tv.tv_sec  = epoch;
     tv.tv_usec = 0;
+
     settimeofday(&tv, nullptr);
 }
 
 // ------------------------------------------------------------
-// providers consumption
+// providers
 // ------------------------------------------------------------
 void TimeService::tryConsumeProviders() {
 
-    // Важно: порядок providers = приоритет.
-    // AUTO: сначала скорее всего сработает RTC provider,
-    //       позже NTP provider уточнит время.
+    // ВАЖНО: порядок providers = приоритет.
+    // Ожидаем:
+    //   [0] RTC provider
+    //   [1] NTP provider
+    //
+    // Это позволяет 100% отличать "кто дал время" без RTTI и без type field.
     for (uint8_t i = 0; i < _providersCount; i++) {
 
         TimeProvider* p = _providers[i];
         if (!p) continue;
 
         p->update();
-
         if (!p->hasTime()) continue;
 
         TimeResult r = p->takeTime();
         if (!r.valid) continue;
 
-        // Применяем режимы:
-        // - RTC_ONLY: принимаем только RTC (и не ждём NTP)
-        // - NTP_ONLY: принимаем только NTP
-        // - AUTO: принимаем RTC первым, потом NTP (переключение RTC→NTP)
-        //
-        // Здесь мы не знаем "кто" provider по типу, поэтому определяем по логике:
-        //   если уже NTP confirmed → повторные "NTP" не нужны,
-        //   но допускаем один переход RTC→NTP в AUTO.
-        //
-        // Чтобы сохранить поведение UI (source), мы делаем так:
-        //   - если _source == NONE или RTC → и пришло валидное время → считаем RTC этапом
-        //   - если режим NTP_ONLY или AUTO и время стало валидным после SYNCING → считаем NTP
-        //
-        // Практически: RTC provider отдаёт очень рано (до валидного системного NTP),
-        // а NTP provider отдаёт позже, когда getLocalTime уже даёт год >= 2020.
-        bool accept = true;
+        if (!looksValid(r.time))
+            continue;
 
+        const bool isRtcProvider = (i == 0);
+        const bool isNtpProvider = (i == 1);
+
+        // --------------------------------------------------------
+        // MODE FILTERS
+        // --------------------------------------------------------
         if (_mode == RTC_ONLY) {
-            // В RTC_ONLY принимаем первое время и всё (не переходим на NTP)
-            if (_source == NTP) accept = false;
-        } else if (_mode == NTP_ONLY) {
-            // В NTP_ONLY не хотим принимать "раннее RTC" вообще
-            // (но setFromRtc может всё равно поставить время вручную — это отдельный путь)
-            // Поэтому если мы ещё не SYNCED, то ждём NTP.
-            // RTC provider в этом режиме просто не регистрируем в main.cpp.
-            accept = true;
-        } else if (_mode == AUTO) {
-            // AUTO: разрешаем один переход RTC → NTP.
-            // Если уже NTP confirmed — повторно не дергаем.
-            accept = true;
+            if (!isRtcProvider) continue;
+            if (_rtcAppliedOnce) continue;
         }
 
-        if (!accept) continue;
+        if (_mode == NTP_ONLY) {
+            if (!isNtpProvider) continue;
+            if (_ntpAppliedOnce) continue;
+        }
 
-        // Ставим время в систему
+        if (_mode == AUTO) {
+            // RTC можно один раз, NTP можно один раз.
+            if (isRtcProvider && _rtcAppliedOnce) continue;
+            if (isNtpProvider && _ntpAppliedOnce) continue;
+        }
+
+        // --------------------------------------------------------
+        // APPLY ONCE POLICY (самый важный фикс)
+        // --------------------------------------------------------
         _timeinfo = r.time;
-        _valid = true;
+        _valid    = true;
+
         applySystemTime(r.time);
 
-        // Определяем источник/статус синхронизации
-        // 1) Если мы были в SYNCING и пришло "взрослое" системное время → это NTP подтверждение
-        //    (обычно это будет NtpTimeProvider)
-        // 2) Иначе — считаем RTC
-        //
-        // Важно: для сохранения твоего UX "R → R>" / "NTP syncing"
-        // мы переводим в SYNCED только когда был SYNCING.
-        if ((_mode == AUTO || _mode == NTP_ONLY) && _syncState == SYNCING && !_ntpConfirmed) {
-            _ntpConfirmed = true;
-            _syncState    = SYNCED;
-            setSource(NTP);
-        } else {
-            // Раннее время (обычно RTC)
+        if (isRtcProvider) {
+            _rtcAppliedOnce = true;
+
             if (_mode != NTP_ONLY) {
                 setSource(RTC);
             }
+
+            // В AUTO мы могли быть в SYNCING (ждём NTP),
+            // но RTC сам по себе SYNCED не делает.
         }
 
-        // В AUTO если NTP уже подтвердился — _source станет NTP.
-        // В RTC_ONLY — остаёмся RTC.
-        // В NTP_ONLY — обычно будет NTP.
+        if (isNtpProvider) {
+            _ntpAppliedOnce = true;
 
-        // Любое событие получения времени — UI должен обновиться
+            if (_mode == AUTO || _mode == NTP_ONLY) {
+                _ntpConfirmed = true;
+                _syncState    = SYNCED;
+                setSource(NTP);
+            }
+        }
+
         _uiVersion.bump(UiChannel::TIME);
-
-        // Важно: в одном update() достаточно принять один источник
-        // (RTC или NTP). Следующие будут приняты на следующих циклах.
         break;
     }
 }
 
 // ------------------------------------------------------------
-// updateFromSystemClock
+// system clock tick + DST + UX timeout
 // ------------------------------------------------------------
 void TimeService::updateFromSystemClock() {
 
-    // В LOCAL_ONLY мы не обновляем время.
-    if (_mode == LOCAL_ONLY)
-        return;
+    // UX: если долго SYNCING — считаем ошибкой
+    if (_syncState == SYNCING && millis() - _syncStartedAt > 15000) {
+        _syncState = ERROR;
+        _uiVersion.bump(UiChannel::TIME);
+    }
 
     tm t{};
     if (!getLocalTime(&t)) {
-        // Если режим NTP_ONLY и время так и не появилось — ошибка UX
-        if (_mode == NTP_ONLY) {
-            _syncState = ERROR;
-            _uiVersion.bump(UiChannel::TIME);
-        }
         return;
     }
+
+    // нормализуем wday/yday
+    mktime(&t);
 
     _timeinfo = t;
     _valid    = true;
 
-    // ===== SOURCE LOGIC (совместимость с твоим старым API) =====
+    // source logic (совместимость)
     switch (_mode) {
-        case RTC_ONLY:
-            setSource(RTC);
-            break;
-
-        case NTP_ONLY:
-            setSource(NTP);
-            break;
-
-        case LOCAL_ONLY:
-            setSource(NONE);
-            break;
-
-        case AUTO:
-            setSource(_ntpConfirmed ? NTP : RTC);
-            break;
+        case RTC_ONLY:   setSource(RTC); break;
+        case NTP_ONLY:   setSource(NTP); break;
+        case LOCAL_ONLY: setSource(NONE); break;
+        case AUTO:       setSource(_ntpConfirmed ? NTP : RTC); break;
     }
 
-    // ===== DST =====
+    // DST
     bool newDst = _dst.isDst(t);
     if (newDst != _dstActive) {
         _dstActive = newDst;
@@ -264,7 +275,7 @@ void TimeService::updateFromSystemClock() {
         _uiVersion.bump(UiChannel::TIME);
     }
 
-    // ===== UI bump =====
+    // tick (это и должно заставлять секунды "идти")
     if (t.tm_min != _lastMinute || t.tm_sec != _lastSecond) {
         _lastMinute = t.tm_min;
         _lastSecond = t.tm_sec;
@@ -273,20 +284,19 @@ void TimeService::updateFromSystemClock() {
 }
 
 // ------------------------------------------------------------
-// NTP (UX state)
+// NTP UX
 // ------------------------------------------------------------
 void TimeService::syncNtp() {
     _syncState = SYNCING;
-    _uiVersion.bump(UiChannel::TIME); // UX: R → R>
+    _syncStartedAt = millis();
+    _uiVersion.bump(UiChannel::TIME);
 }
 
 // ------------------------------------------------------------
-// SOURCE (ЕДИНСТВЕННАЯ ТОЧКА)
+// source
 // ------------------------------------------------------------
 void TimeService::setSource(Source s) {
-    if (_source == s)
-        return;
-
+    if (_source == s) return;
     _source = s;
     _uiVersion.bump(UiChannel::TIME);
 }
@@ -300,9 +310,9 @@ int TimeService::hour()   const { return _timeinfo.tm_hour; }
 int TimeService::minute() const { return _timeinfo.tm_min;  }
 int TimeService::second() const { return _timeinfo.tm_sec;  }
 
-int TimeService::day()    const { return _timeinfo.tm_mday; }
-int TimeService::month()  const { return _timeinfo.tm_mon + 1; }
-int TimeService::year()   const { return _timeinfo.tm_year + 1900; }
+int TimeService::day()   const { return _timeinfo.tm_mday; }
+int TimeService::month() const { return _timeinfo.tm_mon + 1; }
+int TimeService::year()  const { return _timeinfo.tm_year + 1900; }
 
 TimeService::SyncState TimeService::syncState() const { return _syncState; }
 TimeService::Source    TimeService::source()    const { return _source; }
@@ -317,15 +327,34 @@ bool TimeService::getTm(tm& out) const {
 // RTC write policy
 // ------------------------------------------------------------
 bool TimeService::shouldWriteRtc() const {
-    if (_mode != AUTO)
-        return false;
-    if (_syncState != SYNCED)
-        return false;
-    if (_rtcWritten)
-        return false;
-    return true;
+    return _mode == AUTO && _syncState == SYNCED && !_rtcWritten;
 }
 
 void TimeService::markRtcWritten() {
     _rtcWritten = true;
+}
+
+// ------------------------------------------------------------
+// UX helpers (labels only)
+// ------------------------------------------------------------
+const char* TimeService::sourceLabel() const {
+    switch (_source) {
+        case RTC:  return "RTC";
+        case NTP:  return "NTP";
+        case NONE: return "LOCAL";
+        default:   return "---";
+    }
+}
+
+const char* TimeService::stateLabel() const {
+    if (_mode == LOCAL_ONLY)
+        return "disabled";
+
+    switch (_syncState) {
+        case NOT_STARTED: return "idle";
+        case SYNCING:     return "syncing";
+        case SYNCED:      return "ok";
+        case ERROR:       return "error";
+        default:          return "---";
+    }
 }

@@ -29,8 +29,8 @@
 
 // ===== RTC (DS1302) =====
 #define RTC_CLK 14
-#define RTC_DAT 27
-#define RTC_RST 19
+#define RTC_DAT 19
+#define RTC_RST 27
 
 // ===== DHT =====
 #define DHT_PIN  13

@@ -41,7 +41,7 @@ class ThemeService {
 public:
     explicit ThemeService(UiVersionService& uiVersion);
 // Упрощённый доступ для UI (без знания NightTransition)
-const ThemeBlend& blend() const;
+
     // Установить значения по умолчанию (день).
     void begin();
 
@@ -100,8 +100,7 @@ const ThemeBlend& blend() const;
      *
      * Обычно k берут из NightTransitionService::value().
      */
-    static uint16_t blend565(uint16_t day, uint16_t night, float k);
-
+    
     /*
      * blended(k)
      * ----------
@@ -113,11 +112,16 @@ const ThemeBlend& blend() const;
      *
      * Возвращает копию Theme (структура маленькая).
      */
-    Theme blended(float k) const;
+// compat: используется ClockScreen / ForecastScreen
+    
+    const ThemeBlend& blend() const;
+    // compat: используется экранами напрямую
+    static uint16_t blend565(uint16_t a, uint16_t b, float k);
 
 private:
     UiVersionService& _uiVersion;
-
+// кеш для blend()
+    mutable ThemeBlend _cachedBlend{};
     bool  _night = false;
     Theme _theme;
 };

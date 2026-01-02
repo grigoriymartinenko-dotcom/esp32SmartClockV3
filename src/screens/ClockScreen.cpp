@@ -244,4 +244,4 @@ void ClockScreen::drawDht(bool force) {
     tft.print(buf);
 
     dhtDrawnOnce = true;
-}
+} 

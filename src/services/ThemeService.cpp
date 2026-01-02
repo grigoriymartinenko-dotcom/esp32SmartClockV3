@@ -17,7 +17,7 @@ ThemeService::ThemeService(UiVersionService& uiVersion)
 void ThemeService::begin() {
     _theme = THEME_DAY;
     _night = false;
-    // begin() — это старт приложения. Обычно bump не нужен.
+    _cachedBlend = interpolate(0.0f);
 }
 
 // ============================================================================
@@ -30,8 +30,6 @@ void ThemeService::setNight(bool night) {
     _night = night;
     _theme = _night ? THEME_NIGHT : THEME_DAY;
 
-    // Логическое событие смены базовой темы.
-    // Экраны/виджеты могут подписываться на UiChannel::THEME.
     _uiVersion.bump(UiChannel::THEME);
 }
 
@@ -42,99 +40,77 @@ bool ThemeService::isNight() const {
 const Theme& ThemeService::current() const {
     return _theme;
 }
+
+// ============================================================================
+// helpers (PUBLIC API — НЕ УДАЛЯТЬ)
+// ============================================================================
+
+uint16_t ThemeService::blend565(uint16_t a, uint16_t b, float k) {
+    uint8_t ar = (a >> 11) & 0x1F;
+    uint8_t ag = (a >> 5)  & 0x3F;
+    uint8_t ab =  a        & 0x1F;
+
+    uint8_t br = (b >> 11) & 0x1F;
+    uint8_t bg = (b >> 5)  & 0x3F;
+    uint8_t bb =  b        & 0x1F;
+
+    uint8_t r = ar + (br - ar) * k;
+    uint8_t g = ag + (bg - ag) * k;
+    uint8_t b2 = ab + (bb - ab) * k;
+
+    return (r << 11) | (g << 5) | b2;
+}
+
+static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    return ((r & 0xF8) << 8) |
+           ((g & 0xFC) << 3) |
+           ( b >> 3);
+}
+
+// ============================================================================
+// compat: старые экраны
+// ============================================================================
+// ============================================================================
+// blend() — КЕШИРОВАННЫЙ (СТАРЫЙ API)
+// ============================================================================
+
 const ThemeBlend& ThemeService::blend() const {
-    // Пока без анимации: жёсткий Day / Night
-    static ThemeBlend cached;
-    cached = interpolate(_night ? 1.0f : 0.0f);
-    return cached;
+    // k = 0 для day, 1 для night
+    float k = _night ? 1.0f : 0.0f;
+    _cachedBlend = interpolate(k);
+    return _cachedBlend;
 }
 // ============================================================================
-// NEW API: ThemeBlend for "ThemeBlend + postprocess" pipeline
+// interpolate → ThemeBlend (УСИЛЕННЫЙ КОНТРАСТ)
 // ============================================================================
 
 ThemeBlend ThemeService::interpolate(float k) const {
 
-    /*
-     * ВАЖНО:
-     *  - здесь мы НИЧЕГО не знаем про NightTransitionService
-     *  - нам просто дают коэффициент k (0..1)
-     *  - мы возвращаем "готовые" UI цвета ThemeBlend
-     */
+    ThemeBlend out{};
 
-    ThemeBlend out;
+    // background / foreground
+    out.bg = blend565(THEME_DAY.bg, THEME_NIGHT.bg, k);
+    out.fg = blend565(THEME_DAY.textPrimary, THEME_NIGHT.textPrimary, k);
 
-    out.bg     = blend565(THEME_DAY.bg,            THEME_NIGHT.bg,            k);
-    out.fg     = blend565(THEME_DAY.textPrimary,   THEME_NIGHT.textPrimary,   k);
-    out.accent = blend565(THEME_DAY.accent,        THEME_NIGHT.accent,        k);
+    // muted — вторичный, тёмный
+    out.muted = blend565(
+        rgb565(140, 140, 140),
+        rgb565(90,  90,  90),
+        k
+    );
 
-    // muted: вторичный текст (для StatusBar дат/лейблов — идеальный кандидат)
-    out.muted  = blend565(THEME_DAY.textSecondary, THEME_NIGHT.textSecondary, k);
+    // accent — из темы
+    out.accent = blend565(THEME_DAY.accent, THEME_NIGHT.accent, k);
 
-    // warn: в текущем UI StatusBar использует "warn" как ошибку → мапим на error (красный)
-    out.warn   = blend565(THEME_DAY.error,         THEME_NIGHT.error,         k);
+    // success — ЯВНО зелёный
+    out.success = blend565(
+        rgb565(0, 200, 0),
+        rgb565(0, 120, 0),
+        k
+    );
 
-    // success: обычно "OK/online" — часто это select/confirm цвет
-    out.success= blend565(THEME_DAY.select,        THEME_NIGHT.select,        k);
-
-    // ---------------------------------------------------------------------
-// Color temperature (иконки + текст)
-// ---------------------------------------------------------------------
-// fg  — нейтральный
-// fgCool — чуть холоднее (день)
-// fgWarm — заметно теплее (ночь)
-
-constexpr uint16_t COLOR_COOL = 0xFFFF; // белый
-constexpr uint16_t COLOR_WARM = 0xFFE0; // мягкий жёлтый
-
-out.fgCool = blend565(out.fg, COLOR_COOL, 0.20f); // лёгкий холод
-out.fgWarm = blend565(out.fg, COLOR_WARM, 0.35f); // тёплая ночь
-
-    return out;
-}
-
-// ============================================================================
-// blending helpers
-// ============================================================================
-
-uint16_t ThemeService::blend565(uint16_t day, uint16_t night, float k) {
-    // Clamp
-    if (k < 0.0f) k = 0.0f;
-    if (k > 1.0f) k = 1.0f;
-
-    // Unpack RGB565 (5-6-5)
-    const int r1 = (day   >> 11) & 0x1F;
-    const int g1 = (day   >> 5 ) & 0x3F;
-    const int b1 =  day          & 0x1F;
-
-    const int r2 = (night >> 11) & 0x1F;
-    const int g2 = (night >> 5 ) & 0x3F;
-    const int b2 =  night        & 0x1F;
-
-    // Linear interpolation in integer domain (avoid unsigned underflow!)
-    int r = r1 + (int)lroundf((float)(r2 - r1) * k);
-    int g = g1 + (int)lroundf((float)(g2 - g1) * k);
-    int b = b1 + (int)lroundf((float)(b2 - b1) * k);
-
-    // Clamp to channel sizes
-    if (r < 0) r = 0; if (r > 0x1F) r = 0x1F;
-    if (g < 0) g = 0; if (g > 0x3F) g = 0x3F;
-    if (b < 0) b = 0; if (b > 0x1F) b = 0x1F;
-
-    return (uint16_t)((r << 11) | (g << 5) | b);
-}
-
-Theme ThemeService::blended(float k) const {
-    Theme out;
-
-    out.bg            = blend565(THEME_DAY.bg,            THEME_NIGHT.bg,            k);
-    out.textPrimary   = blend565(THEME_DAY.textPrimary,   THEME_NIGHT.textPrimary,   k);
-    out.textSecondary = blend565(THEME_DAY.textSecondary, THEME_NIGHT.textSecondary, k);
-    out.muted         = blend565(THEME_DAY.muted,         THEME_NIGHT.muted,         k);
-
-    out.select        = blend565(THEME_DAY.select,        THEME_NIGHT.select,        k);
-    out.warn          = blend565(THEME_DAY.warn,          THEME_NIGHT.warn,          k);
-    out.accent        = blend565(THEME_DAY.accent,        THEME_NIGHT.accent,        k);
-    out.error         = blend565(THEME_DAY.error,         THEME_NIGHT.error,         k);
+    // warn / error
+    out.warn = blend565(THEME_DAY.error, THEME_NIGHT.error, k);
 
     return out;
 }

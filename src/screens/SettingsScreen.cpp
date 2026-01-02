@@ -57,7 +57,7 @@ void SettingsScreen::begin() {
     _wifiPassLen = 0;
     _wifiCharIdx = 0;
 
-    // ===== Night: загрузка из сервиса =====
+    // ===== Night =====
     _bakMode = _night.mode();
     _tmpMode = _bakMode;
 
@@ -66,6 +66,10 @@ void SettingsScreen::begin() {
 
     _tmpNightStart = _bakNightStart;
     _tmpNightEnd   = _bakNightEnd;
+
+    // ===== Time =====
+    _bakTimeMode = _time.mode();
+    _tmpTimeMode = _bakTimeMode;
 
     _lastWifiListVersion  = _wifi.listVersion();
     _lastWifiStateVersion = _wifi.stateVersion();
@@ -180,6 +184,12 @@ void SettingsScreen::onLongOk() {
             _ui.bump(UiChannel::THEME);
         }
 
+        // ===== APPLY TIME =====
+        if (_level == Level::TIME) {
+            _time.setMode(_tmpTimeMode);
+            _ui.bump(UiChannel::TIME);
+        }
+
         exitEdit(true);
         return;
     }
@@ -188,12 +198,21 @@ void SettingsScreen::onLongOk() {
 void SettingsScreen::onLongBack() {
 
     // ===== CANCEL BRIGHTNESS =====
-if (_mode == UiMode::EDIT && _level == Level::BRIGHTNESS) {
-    _brightness.set(_bakBrightness);
-    
-    exitEdit(false);
-    return;
-}
+    if (_mode == UiMode::EDIT && _level == Level::BRIGHTNESS) {
+        _brightness.set(_bakBrightness);
+        exitEdit(false);
+        return;
+    }
+
+    // ===== CANCEL TIME =====
+    if (_mode == UiMode::EDIT && _level == Level::TIME) {
+        _tmpTimeMode = _bakTimeMode;
+        _time.setMode(_bakTimeMode);
+        exitEdit(false);
+        _buttons.markDirty();
+        return;
+    }
+
     if (_mode == UiMode::EDIT) {
         exitEdit(false);
         _buttons.markDirty();
@@ -235,10 +254,6 @@ void SettingsScreen::enterSubmenu(Level lvl) {
         return;
 
     _level = lvl;
-    if (_level == Level::BRIGHTNESS) {
-    _tmpBrightness = _brightness.get();
-    _bakBrightness = _tmpBrightness;
-}
     _mode  = UiMode::NAV;
     _subSelected = 0;
 
@@ -258,6 +273,11 @@ void SettingsScreen::enterSubmenu(Level lvl) {
         _tmpNightEnd   = _bakNightEnd;
     }
 
+    if (_level == Level::TIME) {
+        _bakTimeMode = _time.mode();
+        _tmpTimeMode = _bakTimeMode;
+    }
+
     _needFullClear = true;
     _dirty         = true;
 
@@ -268,33 +288,3 @@ void SettingsScreen::enterSubmenu(Level lvl) {
     updateButtonBarContext();
     _buttons.markDirty();
 }
-/*
-// ============================================================================
-// EDIT MODE
-// ============================================================================
-void SettingsScreen::editInc() {
-
-    if (_level == Level::BRIGHTNESS) {
-        if (_tmpBrightness < 100) {
-            _tmpBrightness++;
-            _brightness.set(_tmpBrightness);
-            _brightness.apply();   // live preview
-            _dirty = true;
-        }
-        return;
-    }
-}
-
-void SettingsScreen::editDec() {  
-
-    if (_level == Level::BRIGHTNESS) {
-        if (_tmpBrightness > 5) {
-            _tmpBrightness--;
-            _brightness.set(_tmpBrightness);
-            _brightness.apply();
-            _dirty = true;
-        }
-        return;
-    }
-}
-    */

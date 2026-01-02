@@ -345,17 +345,72 @@ void SettingsScreen::drawWifiPassword() {
 // TIME / NIGHT / TIMEZONE
 // ============================================================================
 void SettingsScreen::drawTime() {
+
     const Theme& th = theme();
     const int y0 = STATUSBAR_H;
 
+    // ------------------------------------------------------------------------
+    // TITLE
+    // ------------------------------------------------------------------------
     _tft.setFont(nullptr);
     _tft.setTextWrap(false);
     _tft.setTextSize(2);
-    _tft.setCursor(40, y0 + 6);
+    _tft.setCursor(42, y0 + 6);
     _tft.setTextColor(th.textPrimary, th.bg);
     _tft.print("Time");
 
-    // (здесь позже сделаем как Night: поля + highlight)
+    // ------------------------------------------------------------------------
+    // LIST
+    // ------------------------------------------------------------------------
+    _tft.setTextSize(1);
+
+    constexpr int ROW_H = 14;
+    const int top = y0 + 32;
+
+    // ============================================================
+    // Row 0 — Mode (editable)
+    // ============================================================
+    {
+        const bool selected = (_subSelected == 0);
+        const bool editing  = selected && (_mode == UiMode::EDIT);
+
+        const uint16_t color =
+            editing  ? th.warn :
+            selected ? th.select :
+                       th.textPrimary;
+
+        _tft.fillRect(0, top, _tft.width(), ROW_H, th.bg);
+        _tft.setTextColor(color, th.bg);
+        _tft.setCursor(10, top + 3);
+        _tft.print("> Mode: ");
+
+        switch (_tmpTimeMode) {
+            case TimeService::AUTO:       _tft.print("AUTO");  break;
+            case TimeService::RTC_ONLY:   _tft.print("RTC");   break;
+            case TimeService::NTP_ONLY:   _tft.print("NTP");   break;
+            case TimeService::LOCAL_ONLY: _tft.print("LOCAL"); break;
+        }
+    }
+
+    // ============================================================
+    // Row 1 — Current source (read-only)
+    // ============================================================
+  // ============================================================
+// Row 1 — Current source + state (read-only)
+// ============================================================
+{
+    const int y = top + ROW_H;
+
+    _tft.fillRect(0, y, _tft.width(), ROW_H, th.bg);
+    _tft.setTextColor(th.muted, th.bg);
+    _tft.setCursor(10, y + 3);
+
+    _tft.print("  Now: ");
+    _tft.print(_time.sourceLabel());
+
+    _tft.setCursor(70, y + 3);
+    _tft.print(_time.stateLabel());
+}
 }
 
 // ============================================================================

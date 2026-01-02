@@ -51,9 +51,7 @@ void SettingsScreen::enterEdit() {
 // EXIT EDIT
 // ============================================================================
 void SettingsScreen::exitEdit(bool apply) {
-
-    Serial.println("EXIT EDIT CALLED");
-
+    
     if (!apply) {
         // rollback
         if (_level == Level::WIFI) {
@@ -85,10 +83,6 @@ void SettingsScreen::exitEdit(bool apply) {
 
     // 🔥 ВАЖНО: Brightness = глобальное визуальное изменение
     if (_level == Level::BRIGHTNESS) {
-
-        Serial.print("LEVEL = ");
-        Serial.println((int)_level);
-
         // ❗ сообщаем системе: нужен полный redraw экрана
         _ui.bump(UiChannel::SCREEN);
     }

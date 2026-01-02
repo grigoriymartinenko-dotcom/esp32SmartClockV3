@@ -12,6 +12,10 @@
  * ИСПРАВЛЕНИЕ:
  *  - Подключённая сеть НЕ подменяет список
  *  - ENSURE CONNECTED выполняется ТОЛЬКО после завершённого scan
+ *
+ * ДОП. ФИКС ДЛЯ UX / STATUSBAR:
+ *  - Wi-Fi состояние "живёт": если RSSI меняется (даже без смены state),
+ *    мы делаем bumpState() → StatusBar обновляет цвет/индикатор.
  */
 
 // ============================================================================
@@ -95,12 +99,17 @@ void WifiService::begin() {
 // ============================================================================
 void WifiService::update() {
 
+    // Если Wi-Fi выключен — сервис не дёргает WiFi.status(),
+    // но состояние OFF уже установлено в stop() и забамплено.
     if (!_enabled)
         return;
 
     wl_status_t st = WiFi.status();
     bool nowConnected = (st == WL_CONNECTED);
 
+    // ------------------------------------------------------------
+    // ONLINE / ERROR transitions
+    // ------------------------------------------------------------
     if (nowConnected && _state != State::ONLINE) {
         _state = State::ONLINE;
         copySsid(_currentSsid, WiFi.SSID().c_str());
@@ -113,12 +122,53 @@ void WifiService::update() {
         bumpState();
     }
 
+    // ------------------------------------------------------------
+    // CONNECT timeout
+    // ------------------------------------------------------------
     if (_state == State::CONNECTING) {
         if (millis() - _connectStartMs > CONNECT_TIMEOUT_MS) {
             _state = State::ERROR;
             WiFi.disconnect(true);
             bumpState();
         }
+    }
+
+    // ------------------------------------------------------------
+    // ✅ UX FIX: RSSI/SSID updates should bump state (StatusBar needs it)
+    // ------------------------------------------------------------
+    // Даже если state не менялся (ONLINE остаётся ONLINE),
+    // StatusBar должен получать событие при заметных изменениях RSSI.
+    // Иначе "цвет/иконка" могут казаться "замёрзшими".
+    if (nowConnected && _state == State::ONLINE) {
+
+        // RSSI меняется часто, не хотим спамить UI каждый цикл.
+        // Делаем bumpState() только если изменение заметное.
+        static int16_t lastRssi = WifiService::RSSI_UNKNOWN;
+        int16_t rssiNow = (int16_t)WiFi.RSSI();
+
+        // Также обновляем current SSID (на случай роуминга/переподключения).
+        char ssidNow[33]{};
+        copySsid(ssidNow, WiFi.SSID().c_str());
+
+        bool ssidChanged = !ssidEquals(_currentSsid, ssidNow);
+        if (ssidChanged) {
+            copySsid(_currentSsid, ssidNow);
+        }
+
+        // Порог: 3 dB — достаточно, чтобы индикатор мог измениться, но не дёргать UI постоянно
+        bool rssiChanged = (lastRssi == WifiService::RSSI_UNKNOWN) ||
+                           (abs((int)rssiNow - (int)lastRssi) >= 3);
+
+        if (rssiChanged || ssidChanged) {
+            lastRssi = rssiNow;
+            bumpState();
+        }
+    }
+
+    if (!nowConnected) {
+        // сбрасываем локальный RSSI кеш, чтобы после reconnection сразу забампить
+        static int16_t lastRssi = WifiService::RSSI_UNKNOWN;
+        lastRssi = WifiService::RSSI_UNKNOWN;
     }
 
     // ------------------------------------------------------------------------
@@ -173,7 +223,14 @@ void WifiService::update() {
                     n.connected = true;
                     changed = true;
                 }
-                n.rssi = (int16_t)WiFi.RSSI();
+                // обновляем RSSI подключённой сети
+                int16_t r = (int16_t)WiFi.RSSI();
+                if (n.rssi != r) {
+                    n.rssi = r;
+                    // RSSI влияет на UI списка → это лист, но не надо сортить если не хотим.
+                    // Однако сортировка по RSSI — часть UX списка, поэтому отметим changed.
+                    changed = true;
+                }
                 found = true;
             } else if (n.connected) {
                 n.connected = false;
@@ -189,10 +246,6 @@ void WifiService::update() {
     }
 }
 
-// ============================================================================
-// ENABLE / DISABLE / CONNECT / SCAN / GETTERS
-// (БЕЗ ИЗМЕНЕНИЙ)
-// ============================================================================
 // ============================================================================
 // ENABLE / DISABLE
 // ============================================================================
@@ -360,7 +413,6 @@ const WifiService::Network& WifiService::networkAt(int i) const {
         return dummy;
     return _networks[i];
 }
-
 
 uint32_t WifiService::listVersion() const {
     return _listVersion;

@@ -21,10 +21,10 @@
  *  - update() НЕ блокирует
  *  - UI и кнопки всегда живые
  *
- * ВАЖНЫЕ ФИКСЫ (сохранены из твоей версии):
- *  1) weatherCode всегда инициализируется (иконки не пропадают)
- *  2) tempDay/tempNight могут быть NAN — это допустимые данные
- *  3) локальный день через (tm_year, tm_yday)
+ * ФИКСЫ:
+ *  - защита от старта задачи без Wi-Fi
+ *  - защита от двойного fetch
+ *  - предсказуемый retry
  */
 
 // ============================================================================
@@ -58,18 +58,8 @@ void ForecastService::begin() {
 
     setError("");
 
-    // ------------------------------------------------------------
-    // Запускаем отдельную задачу для HTTP + JSON
-    // ------------------------------------------------------------
-    xTaskCreatePinnedToCore(
-        taskEntry,
-        "ForecastTask",
-        8192,           // ОБЯЗАТЕЛЬНО: JSON большой
-        this,
-        1,              // низкий приоритет
-        &_task,
-        1               // второй core (UI на первом)
-    );
+    // FIX: задачу НЕ стартуем сразу — ждём Wi-Fi
+    _task = nullptr;
 }
 
 // ============================================================================
@@ -79,24 +69,35 @@ void ForecastService::update() {
 
     const uint32_t now = millis();
 
-    // Не спамим попытками
+    // FIX: если нет Wi-Fi — просто ждём
+    if (WiFi.status() != WL_CONNECTED)
+        return;
+
+    // FIX: ленивый старт задачи (1 раз)
+    if (_task == nullptr) {
+        xTaskCreatePinnedToCore(
+            taskEntry,
+            "ForecastTask",
+            8192,
+            this,
+            1,
+            &_task,
+            1
+        );
+    }
+
+    // Не спамим
     if (now - _lastAttemptMs < RETRY_INTERVAL_MS)
         return;
 
     if (!shouldUpdate())
         return;
 
+    // FIX: двойная защита
     if (_needUpdate || _updating)
         return;
 
     _lastAttemptMs = now;
-
-    if (WiFi.status() != WL_CONNECTED) {
-        setError("WiFi not connected");
-        return;
-    }
-
-    // Просим задачу обновиться
     _needUpdate = true;
 }
 
@@ -114,7 +115,7 @@ void ForecastService::taskLoop() {
 
     for (;;) {
 
-        if (_needUpdate) {
+        if (_needUpdate && !_updating) {
 
             _updating = true;
 
@@ -128,11 +129,12 @@ void ForecastService::taskLoop() {
                 Serial.printf("[Forecast] FAIL: %s\n", lastError());
             }
 
-            _updating = false;
+            _updating   = false;
             _needUpdate = false;
         }
 
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        // FIX: не жрём CPU
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }
 
@@ -200,7 +202,6 @@ bool ForecastService::fetchForecast() {
         return false;
     }
 
-    // FREE forecast = большой JSON
     DynamicJsonDocument doc(45000);
     DeserializationError err = deserializeJson(doc, http.getStream());
     http.end();
@@ -218,9 +219,6 @@ bool ForecastService::fetchForecast() {
 
     _model.reset();
 
-    // ------------------------------------------------------------------------
-    // todayKey (локальный день)
-    // ------------------------------------------------------------------------
     time_t nowTs = time(nullptr);
     tm nowLocal{};
     localtime_r(&nowTs, &nowLocal);
@@ -228,26 +226,19 @@ bool ForecastService::fetchForecast() {
 
     struct Acc {
         bool used = false;
-
         float daySum = 0;
         float nightSum = 0;
         int dayCnt = 0;
         int nightCnt = 0;
-
         uint32_t dayMidnightDt = 0;
         uint8_t weekday = 0;
-
         uint8_t hum = 0;
-
         bool hasCode = false;
         int  weatherCode = 0;
     };
 
     Acc acc[FORECAST_MAX_DAYS] = {};
 
-    // ------------------------------------------------------------------------
-    // Проходим все 3h точки прогноза
-    // ------------------------------------------------------------------------
     for (JsonObject item : list) {
 
         time_t ts = item["dt"].as<time_t>();
@@ -296,9 +287,6 @@ bool ForecastService::fetchForecast() {
         }
     }
 
-    // ------------------------------------------------------------------------
-    // Формируем модель
-    // ------------------------------------------------------------------------
     for (uint8_t i = 0; i < FORECAST_MAX_DAYS; i++) {
 
         if (!acc[i].used)
@@ -312,7 +300,6 @@ bool ForecastService::fetchForecast() {
         d.tempDay   = acc[i].dayCnt   ? (acc[i].daySum   / acc[i].dayCnt)   : NAN;
         d.tempNight = acc[i].nightCnt ? (acc[i].nightSum / acc[i].nightCnt) : NAN;
         d.humidity  = acc[i].hum;
-
         d.weatherCode = acc[i].hasCode ? acc[i].weatherCode : 800;
 
         _model.daysCount++;

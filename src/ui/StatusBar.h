@@ -3,8 +3,6 @@
 
 #include "services/ThemeService.h"
 #include "services/ThemeBlend.h"
-#include "services/NightTransitionService.h"
-#include "services/ColorTemperatureService.h"
 #include "services/TimeService.h"
 #include "services/WifiService.h"
 
@@ -13,10 +11,8 @@
  * ---------
  * Верхняя статусная панель.
  *
- * ПРАВИЛО (НОВОЕ):
+ * ПРАВИЛО:
  *  - StatusBar работает ТОЛЬКО с ThemeBlend
- *  - НЕТ Day/Night
- *  - НЕТ blend565
  *  - NightTransition → коэффициент
  *  - ColorTemperature → пост-фильтр
  */
@@ -35,15 +31,13 @@ public:
     StatusBar(
         Adafruit_ST7735& tft,
         ThemeService& theme,
-        NightTransitionService& nightTransition,
-        ColorTemperatureService& colorTemp,
         TimeService& time,
         WifiService& wifi
     );
 
     void update();
     void markDirty();
-    void drawTimeOnly();
+    //void drawTimeOnly();
 
 private:
     void drawStatic(const ThemeBlend& th);
@@ -55,16 +49,15 @@ private:
     const char* weekdayEnFromTm(const tm& t) const;
 
 private:
-    Adafruit_ST7735&        _tft;
-    ThemeService&           _theme;
-    NightTransitionService& _night;
-    ColorTemperatureService& _temp;
-    TimeService&            _time;
-    WifiService&            _wifi;
+    Adafruit_ST7735&         _tft;
+    ThemeService&            _theme;
+    TimeService&             _time;
+    WifiService&             _wifi;
 
     Status _wifiSt = OFFLINE;
     Status _timeSt = OFFLINE;
-
+private:
+    bool _timeDirty = true;
     char _lastTimeStr[32] = {0};
     bool _dirty = true;
 };

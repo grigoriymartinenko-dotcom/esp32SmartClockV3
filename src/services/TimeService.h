@@ -12,27 +12,12 @@
  * -----------
  * Единый источник времени для всей системы.
  *
- * Ключевая идея (новая архитектура):
- *  - TimeService больше НЕ "ходит сам" за временем в разные места.
- *  - Он агрегирует TimeProvider'ы (RTC, NTP, любые будущие источники).
- *
- * Почему это "асинхронно":
- *  - NTP provider просто ждёт, когда системное время станет валидным (без блокировок).
- *  - RTC provider отдаёт время один раз сразу после старта.
- *
- * Режимы (оставляем твою API-совместимость):
- *  - RTC_ONLY   — использовать только RTC provider
- *  - NTP_ONLY   — использовать только NTP provider
- *  - LOCAL_ONLY — время не обновляется
- *  - AUTO       — RTC → затем уточнение NTP
- *
- * ПРАВИЛО:
- *  - _source — ЕДИНСТВЕННАЯ истина об активном источнике
- *  - Любая смена _source обязана дергать UiVersion::TIME
- *
- * ВАЖНО:
- *  - configTime(...) и DST-переключения остаются здесь (централизованно),
- *    чтобы в системе был единый "часовой пояс".
+ * UX helpers:
+ * -----------
+ * sourceLabel() / stateLabel()
+ *   - ТОЛЬКО текст
+ *   - БЕЗ цветов
+ *   - БЕЗ логики UI
  */
 
 class TimeService {
@@ -62,14 +47,8 @@ public:
     void begin();
     void update();
 
-    // ===== Providers =====
-    // Регистрируем провайдеры в нужном порядке приоритета.
-    // Обычно:
-    //   registerProvider(rtcProvider);
-    //   registerProvider(ntpProvider);
     void registerProvider(TimeProvider& p);
 
-    // ===== RTC sync policy =====
     bool shouldWriteRtc() const;
     void markRtcWritten();
 
@@ -78,8 +57,6 @@ public:
 
     void setTimezone(long gmtOffsetSec, int daylightOffsetSec);
 
-    // Оставляем для совместимости, но в новой архитектуре это "внешняя инъекция времени".
-    // Обычно теперь RTC делает RtcTimeProvider.
     void setFromRtc(const tm& t);
 
     bool isValid() const;
@@ -95,16 +72,22 @@ public:
     SyncState syncState() const;
     Source    source()    const;
 
+    // 👇 UX helpers (READ-ONLY)
+    const char* sourceLabel() const;
+    const char* stateLabel()  const;
+
     bool getTm(tm& out) const;
 
     bool isDstActive() const { return _dstActive; }
 
 private:
-    void updateFromSystemClock();      // тик + UI bump + DST
-    void tryConsumeProviders();        // принять новое время от providers
-    void applySystemTime(const tm& t); // установить системное время
-    void syncNtp();                    // UX state: SYNCING
+    void updateFromSystemClock();
+    void tryConsumeProviders();
+    void applySystemTime(const tm& t);
+    void syncNtp();
     void setSource(Source s);
+
+    static bool looksValid(const tm& t);
 
 private:
     UiVersionService& _uiVersion;
@@ -117,6 +100,9 @@ private:
     bool _valid        = false;
     bool _rtcWritten   = false;
 
+    bool _rtcAppliedOnce = false;
+    bool _ntpAppliedOnce = false;
+
     tm _timeinfo{};
 
     int _lastMinute = -1;
@@ -128,7 +114,8 @@ private:
     DstService _dst;
     bool _dstActive = false;
 
-    // Providers (без dynamic allocation: фиксированный массив)
+    unsigned long _syncStartedAt = 0;
+
     static constexpr uint8_t MAX_PROVIDERS = 4;
     TimeProvider* _providers[MAX_PROVIDERS]{};
     uint8_t _providersCount = 0;
